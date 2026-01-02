@@ -1,0 +1,8 @@
+# requirements.txt for The Queue
+# Version 1.0 - 2025-01-01
+
+Flask==3.1.1
+waitress==3.0.0
+pyodbc==5.2.0
+SQLAlchemy==2.0.41
+python-dotenv==1.1.0

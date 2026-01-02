@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}The Queue - Select Work Cell{% endblock %}
+
+{% block content %}
+<div class="home-container">
+    <h1>Select Work Cell</h1>
+    <div class="workcell-grid">
+        {% for wc in workcells %}
+        <a href="{{ url_for('views.queue', workcell_id=wc.id) }}" class="workcell-btn">
+            {{ wc.name }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,807 @@
+{% extends "base.html" %}
+
+{% block title %}The Queue - {{ workcell_name }}{% endblock %}
+
+{% block content %}
+<div class="queue-header">
+    <div class="queue-title-row">
+        <a href="{{ url_for('views.index') }}" class="back-btn">← Back</a>
+        <h2>{{ workcell_name }}</h2>
+    </div>
+    <div class="mass-actions">
+        <button class="start-btn mass-btn">Mass Start</button>
+        <button class="end-btn mass-btn">Mass End</button>
+    </div>
+    <button onclick="location.reload()" class="refresh-btn">🔄 Refresh Data</button>
+</div>
+
+{% if jobs %}
+<div class="filter-row">
+    <div class="op-filters">
+        <button class="op-filter-btn active" data-op="all">All</button>
+        {% set ops = jobs | map(attribute='OpCode') | unique | list %}
+        {% for op in ops %}
+        <button class="op-filter-btn" data-op="{{ op }}">{{ op }}</button>
+        {% endfor %}
+    </div>
+    
+    <input type="text" id="search-box" class="search-box" placeholder="Search jobs..." autocomplete="off">
+    
+    {% if workcell_config.group_by_material %}
+    <div class="material-filter">
+        <select id="material-select" class="material-select">
+            <option value="all">Loading materials...</option>
+        </select>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% set columns = workcell_config.columns %}
+
+<div id="job-queue">
+    {% if jobs %}
+    <table class="job-table" id="job-table">
+        <thead>
+            <tr>
+                <th class="col-select"><input type="checkbox" id="select-all" title="Select all"></th>
+                {% if 'startdate' in columns %}<th data-sort="StartDate" class="sortable col-date">Start <span class="sort-icon"></span></th>{% endif %}
+                {% if 'operation' in columns %}<th data-sort="OpCode" class="sortable col-op">Operation <span class="sort-icon"></span></th>{% endif %}
+                {% if 'job' in columns %}<th data-sort="JobNum" class="sortable col-job">Job # <span class="sort-icon"></span></th>{% endif %}
+                {% if 'part' in columns %}<th data-sort="PartNum" class="sortable col-part">Part <span class="sort-icon"></span></th>{% endif %}
+                {% if 'description' in columns %}<th data-sort="PartDescription" class="sortable col-desc">Description <span class="sort-icon"></span></th>{% endif %}
+                {% if 'left' in columns %}<th data-sort="QtyLeft" class="sortable col-qty">Left <span class="sort-icon"></span></th>{% endif %}
+                {% if 'available' in columns %}<th data-sort="QtyAvailable" class="sortable col-qty">Avail <span class="sort-icon"></span></th>{% endif %}
+                {% if 'mtl' in columns %}<th data-sort="MtlStatus" class="sortable col-mtl">Mtl <span class="sort-icon"></span></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody id="job-tbody">
+            {% for job in jobs %}
+            {% set qty_available = (job.QtyFromPrior or 0) - (job.QtyCompletedThisOp or 0) %}
+            <tr class="job-row" 
+                data-job="{{ job.JobNum }}" 
+                data-jobkey="{{ job.JobNum }}-{{ job.AssemblySeq }}-{{ job.OprSeq }}"
+                data-asm="{{ job.AssemblySeq }}"
+                data-opr="{{ job.OprSeq }}"
+                data-opcode="{{ job.OpCode }}"
+                data-partnum="{{ job.PartNum }}"
+                data-mtl-status="{{ job.MtlStatus }}"
+                data-qty-completed="{{ job.QtyCompletedThisOp or 0 }}"
+                data-qty-available="{{ qty_available if not job.IsFirstOp else '' }}"
+                data-is-first-op="{{ job.IsFirstOp }}"
+                data-notes="{{ job.Notes or '' }}"
+                data-nextlocation="{{ job.NextLocation or '' }}"
+                data-ophours="{{ job.OpHours or 0 }}"
+                data-cycle="{{ job.CycleTime or 0 }}"
+                data-finishcolor="{{ job.FinishColor or '' }}"
+                data-preptime="{{ job.PrepTime or 0 }}"
+                data-machload="{{ job.MachLoad or 0 }}"
+                data-machrun="{{ job.MachRun or 0 }}"
+                data-machunload="{{ job.MachUnload or 0 }}"
+                data-machprogram="{{ job.MachProgram or '' }}"
+                data-priority="{{ job.Priority or '' }}">
+                
+                <td class="col-select"><input type="checkbox" class="row-select" onclick="event.stopPropagation()"></td>
+                
+                {% if 'startdate' in columns %}
+                <td data-value="{{ job.StartDate.strftime('%Y-%m-%d') if job.StartDate else '' }}" class="col-date">{{ job.StartDate.strftime('%m/%d') if job.StartDate else '-' }}</td>
+                {% endif %}
+                
+                {% if 'operation' in columns %}
+                <td data-value="{{ job.OpCode }}" class="col-op">{{ job.OprSeq }}-{{ job.OpCode }}</td>
+                {% endif %}
+                
+                {% if 'job' in columns %}
+                <td data-value="{{ job.JobNum }}" class="col-job"><span class="job-num">{{ job.JobNum }}</span></td>
+                {% endif %}
+                
+                {% if 'part' in columns %}
+                <td data-value="{{ job.PartNum }}" class="col-part">{{ job.PartNum }}</td>
+                {% endif %}
+                
+                {% if 'description' in columns %}
+                <td data-value="{{ job.PartDescription or '' }}" class="col-desc">{{ job.PartDescription or '-' }}</td>
+                {% endif %}
+                
+                {% if 'left' in columns %}
+                <td data-value="{{ job.QtyLeft or 0 }}" class="col-qty">{{ (job.QtyLeft or 0)|int }}</td>
+                {% endif %}
+                
+                {% if 'available' in columns %}
+                <td data-value="{{ qty_available if not job.IsFirstOp else -1 }}" class="col-qty">
+                    {% if job.IsFirstOp %}-{% else %}{{ qty_available|int }}{% endif %}
+                </td>
+                {% endif %}
+                
+                {% if 'mtl' in columns %}
+                <td data-value="{{ job.MtlStatus }}" class="col-mtl">
+                    {% if job.MtlStatus == 'star' %}
+                    <span class="mtl-star" title="Full - covers all demand">★</span>
+                    {% elif job.MtlStatus == 'check' %}
+                    <span class="mtl-check" title="Job OK - covers this job">✓</span>
+                    {% elif job.MtlStatus == 'partial' %}
+                    <span class="mtl-partial" title="Partial - can do some">⚠</span>
+                    {% elif job.MtlStatus == 'missing' %}
+                    <span class="mtl-missing" title="None - materials needed">✗</span>
+                    {% else %}
+                    <span class="mtl-none" title="No materials required">-</span>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <h3>No Jobs Ready</h3>
+        <p>There are no jobs currently waiting for this work cell.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Single detail panel - fixed at bottom of viewport -->
+{% if jobs %}
+<div id="detail-panel" class="detail-panel hidden">
+    <div class="detail-panel-header">
+        <span id="detail-panel-title"></span>
+        <button id="detail-panel-close" class="detail-panel-close">✕</button>
+    </div>
+    <div id="detail-panel-content" class="detail-content"></div>
+</div>
+{% endif %}
+
+<p class="job-count">
+    Showing <span id="visible-count">{{ jobs|length }}</span> of {{ jobs|length }} job(s)
+    <span id="pagination-controls" class="pagination-controls"></span>
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const workcellId = "{{ workcell_id }}";
+const workcellConfig = {{ workcell_config | tojson }};
+const detailFields = workcellConfig.detail_fields || [];
+
+// Pre-loaded job details - keeps DOM light
+const jobDetails = {
+{% for job in jobs %}
+    "{{ job.JobNum }}-{{ job.AssemblySeq }}-{{ job.OprSeq }}": {
+        operations: {{ job.OperationsJSON|safe or '[]' }},
+        materials: {{ job.MaterialsJSON|safe or '[]' }}
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+
+// Current sort state
+let currentSort = { column: null, direction: 'asc' };
+
+// Pagination
+const PAGE_SIZE = 200;
+let currentPage = 1;
+let filteredRows = [];  // Rows that pass current filters
+
+// Current filters
+let currentOpFilter = 'all';
+let currentMaterialFilter = 'all';
+let materialJobKeys = null;  // null = show all, array = show only these
+
+// Detail panel references (declared early for use in applyFilters)
+let currentExpandedRow = null;
+const detailPanel = document.getElementById('detail-panel');
+const detailPanelContent = document.getElementById('detail-panel-content');
+const detailPanelTitle = document.getElementById('detail-panel-title');
+const detailPanelClose = document.getElementById('detail-panel-close');
+
+// --- OPERATION FILTER BUTTONS ---
+document.querySelectorAll('.op-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.op-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentOpFilter = btn.dataset.op;
+        applyFilters();
+    });
+});
+
+// --- MATERIAL FILTER DROPDOWN ---
+const materialSelect = document.getElementById('material-select');
+if (materialSelect) {
+    // Load materials in background
+    fetch('/api/materials/{{ workcell_id }}')
+        .then(response => response.json())
+        .then(materials => {
+            materialSelect.innerHTML = '<option value="all">All Materials</option>';
+            materials.forEach(mtl => {
+                const option = document.createElement('option');
+                option.value = mtl.PartNum;
+                option.textContent = mtl.PartDescription || mtl.PartNum;
+                materialSelect.appendChild(option);
+            });
+        })
+        .catch(err => {
+            materialSelect.innerHTML = '<option value="all">All Materials</option>';
+            console.error('Failed to load materials:', err);
+        });
+    
+    materialSelect.addEventListener('change', () => {
+        currentMaterialFilter = materialSelect.value;
+        if (currentMaterialFilter === 'all') {
+            materialJobKeys = null;
+            applyFilters();
+        } else {
+            // Fetch jobs that use this material
+            fetch('/api/jobs_by_material/{{ workcell_id }}/' + encodeURIComponent(currentMaterialFilter))
+                .then(response => response.json())
+                .then(jobKeys => {
+                    materialJobKeys = jobKeys;
+                    applyFilters();
+                })
+                .catch(err => {
+                    console.error('Failed to load jobs by material:', err);
+                    materialJobKeys = null;
+                    applyFilters();
+                });
+        }
+    });
+}
+
+function applyFilters() {
+    const searchQuery = document.getElementById('search-box').value.toLowerCase();
+    const tbody = document.getElementById('job-tbody');
+    const allRows = Array.from(tbody.querySelectorAll('.job-row'));
+    
+    // Step 1: Find all rows that match filters
+    filteredRows = allRows.filter(row => {
+        const text = row.textContent.toLowerCase();
+        const opCode = row.dataset.opcode;
+        const jobKey = row.dataset.jobkey;
+        
+        const matchesSearch = searchQuery === '' || text.includes(searchQuery);
+        const matchesOp = currentOpFilter === 'all' || opCode === currentOpFilter;
+        const matchesMaterial = materialJobKeys === null || materialJobKeys.includes(jobKey);
+        
+        return matchesSearch && matchesOp && matchesMaterial;
+    });
+    
+    // Reset to page 1 when filters change
+    currentPage = 1;
+    
+    // Step 2: Show only current page
+    showCurrentPage(allRows);
+}
+
+function showCurrentPage(allRows) {
+    if (!allRows) {
+        allRows = Array.from(document.getElementById('job-tbody').querySelectorAll('.job-row'));
+    }
+    
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    const endIdx = startIdx + PAGE_SIZE;
+    const pageRows = new Set(filteredRows.slice(startIdx, endIdx));
+    
+    // Hide all, show only current page
+    allRows.forEach(row => {
+        row.style.display = pageRows.has(row) ? '' : 'none';
+    });
+    
+    // Close panel if expanded row is now hidden
+    if (currentExpandedRow && !pageRows.has(currentExpandedRow)) {
+        detailPanel.classList.add('hidden');
+        currentExpandedRow.classList.remove('expanded');
+        currentExpandedRow = null;
+    }
+    
+    // Update counts and pagination
+    const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
+    document.getElementById('visible-count').textContent = filteredRows.length;
+    updatePaginationControls(totalPages);
+}
+
+function updatePaginationControls(totalPages) {
+    const container = document.getElementById('pagination-controls');
+    if (!container) return;
+    
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>&laquo; Prev</button>`;
+    html += `<span class="page-info">Page ${currentPage} of ${totalPages}</span>`;
+    html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next &raquo;</button>`;
+    
+    container.innerHTML = html;
+}
+
+function goToPage(page) {
+    const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    showCurrentPage();
+}
+
+// --- ROW EXPANSION ---
+if (detailPanelClose) {
+    detailPanelClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        detailPanel.classList.add('hidden');
+        if (currentExpandedRow) {
+            currentExpandedRow.classList.remove('expanded');
+            currentExpandedRow = null;
+        }
+    });
+}
+
+document.querySelectorAll('.job-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // If clicking same row, close panel
+        if (currentExpandedRow === row) {
+            detailPanel.classList.add('hidden');
+            row.classList.remove('expanded');
+            currentExpandedRow = null;
+            return;
+        }
+        
+        // Close previous
+        if (currentExpandedRow) {
+            currentExpandedRow.classList.remove('expanded');
+        }
+        
+        // Expand new
+        row.classList.add('expanded');
+        currentExpandedRow = row;
+        
+        const jobNum = row.dataset.job;
+        const asmSeq = row.dataset.asm;
+        const oprSeq = row.dataset.opr;
+        const partNum = row.dataset.partnum;
+        const qtyCompleted = row.dataset.qtyCompleted;
+        
+        const extraData = {
+            notes: row.dataset.notes,
+            nextlocation: row.dataset.nextlocation,
+            ophours: row.dataset.ophours,
+            cycle: row.dataset.cycle,
+            material: row.dataset.material,
+            finishcolor: row.dataset.finishcolor,
+            preptime: row.dataset.preptime,
+            machload: row.dataset.machload,
+            machrun: row.dataset.machrun,
+            machunload: row.dataset.machunload,
+            machprogram: row.dataset.machprogram,
+            priority: row.dataset.priority,
+            qtyAvailable: row.dataset.qtyAvailable,
+            isFirstOp: row.dataset.isFirstOp,
+            mtlStatus: row.dataset.mtlStatus
+        };
+        
+        const description = row.querySelector('.col-desc')?.textContent?.trim() || '';
+        detailPanelTitle.textContent = `Job ${jobNum} - ${partNum}${description ? ' - ' + description : ''}`;
+        loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData, detailPanelContent, row);
+        detailPanel.classList.remove('hidden');
+        
+        // Scroll row into view above the panel
+        setTimeout(() => {
+            const panelHeight = detailPanel.offsetHeight;
+            const rowRect = row.getBoundingClientRect();
+            const viewportHeight = window.innerHeight;
+            
+            // If row is in the bottom half (would be covered by panel), scroll it up
+            if (rowRect.bottom > viewportHeight - panelHeight) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }, 50);
+    });
+});
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    
+    // Try parsing as Date object first
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${month}/${day}`;
+    }
+    
+    // Fallback: try splitting ISO format
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+        return `${parts[1]}/${parts[2]}`;
+    }
+    return '-';
+}
+
+function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData, content, row) {
+    
+    // Get data from JavaScript object - NOT from DOM
+    const key = `${jobNum}-${asmSeq}-${oprSeq}`;
+    const details = jobDetails[key] || { operations: [], materials: [] };
+    const operations = details.operations || [];
+    const materials = details.materials || [];
+    
+    const materialLimit = workcellConfig.material_limit;
+    const showLastCheckin = detailFields.includes('last_checkin');
+    
+    let html = '';
+    
+    // Job info row - we have ProdQty from the row, calculate from there
+    const prodQty = parseInt(row.querySelector('.col-qty')?.textContent) + parseInt(qtyCompleted) || 0;
+    const left = prodQty - qtyCompleted;
+    
+    html += '<div class="job-info-row">';
+    
+    // Group 1: Priority - REMOVED
+    
+    // Group 2: Quantities (larger display)
+    html += '<div class="info-group qty-group">';
+    if (detailFields.includes('qty')) {
+        html += `<div class="info-item qty-item"><span class="info-label">Qty</span><span class="info-value">${Math.floor(prodQty)}</span></div>`;
+    }
+    if (detailFields.includes('done')) {
+        html += `<div class="info-item qty-item"><span class="info-label">Done</span><span class="info-value">${Math.floor(qtyCompleted)}</span></div>`;
+    }
+    if (detailFields.includes('left')) {
+        html += `<div class="info-item qty-item"><span class="info-label">Left</span><span class="info-value">${Math.floor(left)}</span></div>`;
+    }
+    // Available - show dash if first op, green if positive
+    const isFirstOp = extraData.isFirstOp === '1' || extraData.isFirstOp === 'True';
+    const availNum = parseInt(extraData.qtyAvailable) || 0;
+    const availDisplay = isFirstOp ? '-' : Math.floor(availNum);
+    const availClass = (!isFirstOp && availNum > 0) ? 'avail-positive' : '';
+    html += `<div class="info-item qty-item"><span class="info-label">Avail</span><span class="info-value ${availClass}">${availDisplay}</span></div>`;
+    // Material status icon
+    const mtlStatus = extraData.mtlStatus || 'none';
+    let mtlIcon = '-';
+    let mtlTitle = 'No materials required';
+    if (mtlStatus === 'star') { mtlIcon = '<span class="mtl-star">★</span>'; mtlTitle = 'Full - covers all demand'; }
+    else if (mtlStatus === 'check') { mtlIcon = '<span class="mtl-check">✓</span>'; mtlTitle = 'Job OK - covers this job'; }
+    else if (mtlStatus === 'partial') { mtlIcon = '<span class="mtl-partial">⚠</span>'; mtlTitle = 'Partial - can do some'; }
+    else if (mtlStatus === 'missing') { mtlIcon = '<span class="mtl-missing">✗</span>'; mtlTitle = 'None - materials needed'; }
+    html += `<div class="info-item qty-item"><span class="info-label">Mtl</span><span class="info-value mtl-value" title="${mtlTitle}">${mtlIcon}</span></div>`;
+    html += '</div>';
+    
+    // Group 3: Times
+    const hasTimeFields = detailFields.includes('ophours') || detailFields.includes('cycle') || 
+                          detailFields.includes('preptime') || detailFields.includes('machload') || 
+                          detailFields.includes('machrun') || detailFields.includes('machunload');
+    if (hasTimeFields) {
+        html += '<div class="info-group">';
+        if (detailFields.includes('cycle')) {
+            html += `<div class="info-item"><span class="info-label">Cycle</span><span class="info-value">${parseFloat(extraData.cycle).toFixed(2)}</span></div>`;
+        }
+        if (detailFields.includes('ophours')) {
+            const hours = parseFloat(extraData.ophours) || 0;
+            const h = Math.floor(hours);
+            const m = Math.round((hours - h) * 60);
+            const opHrsDisplay = h > 0 ? `${h}h ${m}m` : `${m}m`;
+            html += `<div class="info-item"><span class="info-label">Op Hrs</span><span class="info-value">${opHrsDisplay}</span></div>`;
+        }
+        if (detailFields.includes('preptime')) {
+            html += `<div class="info-item"><span class="info-label">Prep</span><span class="info-value">${parseFloat(extraData.preptime).toFixed(2)}</span></div>`;
+        }
+        if (detailFields.includes('machload')) {
+            html += `<div class="info-item"><span class="info-label">Load</span><span class="info-value">${parseFloat(extraData.machload).toFixed(2)}</span></div>`;
+        }
+        if (detailFields.includes('machrun')) {
+            html += `<div class="info-item"><span class="info-label">Run</span><span class="info-value">${parseFloat(extraData.machrun).toFixed(2)}</span></div>`;
+        }
+        if (detailFields.includes('machunload')) {
+            html += `<div class="info-item"><span class="info-label">Unload</span><span class="info-value">${parseFloat(extraData.machunload).toFixed(2)}</span></div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Group 4: Other fields (material, color, program)
+    const hasOtherFields = (detailFields.includes('material') && extraData.material) ||
+                           (detailFields.includes('finishcolor') && extraData.finishcolor) ||
+                           (detailFields.includes('machprogram') && extraData.machprogram);
+    if (hasOtherFields) {
+        html += '<div class="info-group">';
+        if (detailFields.includes('material') && extraData.material) {
+            html += `<div class="info-item"><span class="info-label">Material</span><span class="info-value">${extraData.material}</span></div>`;
+        }
+        if (detailFields.includes('finishcolor') && extraData.finishcolor) {
+            html += `<div class="info-item"><span class="info-label">Color</span><span class="info-value">${extraData.finishcolor}</span></div>`;
+        }
+        if (detailFields.includes('machprogram') && extraData.machprogram) {
+            html += `<div class="info-item"><span class="info-label">Program</span><span class="info-value">${extraData.machprogram}</span></div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Group 5: Placeholder for Last Check-in (loaded async, on left side)
+    if (showLastCheckin) {
+        html += '<div class="info-group" id="last-checkin-group"></div>';
+    }
+    
+    // Spacer to push next items to the right
+    html += '<div class="info-spacer"></div>';
+    
+    // Start and End buttons
+    html += '<button class="start-btn">Start</button>';
+    html += '<button class="end-btn">End</button>';
+    
+    // Next Location (after buttons)
+    if (detailFields.includes('nextlocation') && extraData.nextlocation) {
+        html += '<div class="info-group info-group-right">';
+        html += `<div class="info-item"><span class="info-label">Next Loc</span><span class="info-value">${extraData.nextlocation}</span></div>`;
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    
+    // Notes on its own line if present
+    if (detailFields.includes('notes') && extraData.notes) {
+        html += `<div class="job-notes"><span class="notes-label">Notes:</span> ${extraData.notes}</div>`;
+    }
+    
+    // Two-column layout: Operations left, Materials right
+    html += '<div class="detail-columns">';
+    
+    // Operations section
+    html += '<div class="detail-col">';
+    if (operations.length > 0) {
+        html += `
+            <h4>Operations</h4>
+            <table class="ops-table">
+                <thead>
+                    <tr>
+                        <th>Seq</th>
+                        <th>Operation</th>
+                        <th>Cycle</th>
+                        <th>Done</th>
+                        <th>✓</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${operations.map(op => `
+                        <tr class="${op.OprSeq == oprSeq ? 'current-op' : ''} ${op.OpComplete ? 'op-complete' : ''}">
+                            <td>${op.OprSeq}</td>
+                            <td>${op.OpCode}</td>
+                            <td>${op.ProdStandard ? op.ProdStandard.toFixed(2) : '-'}</td>
+                            <td>${Math.floor(op.QtyCompleted)}</td>
+                            <td><input type="checkbox" ${op.OpComplete ? 'checked' : ''} disabled></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+    html += '</div>';
+    
+    // Materials section
+    html += '<div class="detail-col">';
+    let displayMaterials = materials;
+    let showMoreBtn = false;
+    
+    if (materialLimit && materials.length > materialLimit) {
+        showMoreBtn = true;
+        displayMaterials = materials.slice(0, materialLimit);
+    }
+    
+    if (displayMaterials.length > 0) {
+        html += `
+            <h4>Materials${showMoreBtn ? ` (showing ${materialLimit} of ${materials.length})` : ''}</h4>
+            <table class="mtl-table">
+                <thead>
+                    <tr>
+                        <th>Part</th>
+                        <th>Description</th>
+                        <th>Req</th>
+                        <th>On Hand</th>
+                        <th>Demand</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${displayMaterials.map(m => {
+                        const isSheet = (m.ReqUOM === 'SH100' || m.OnHandUOM === 'SH100');
+                        const reqQty = isSheet ? m.RequiredQty.toFixed(2) : Math.floor(m.RequiredQty);
+                        const ohQty = isSheet ? (m.OnHandQty || 0).toFixed(2) : Math.floor(m.OnHandQty || 0);
+                        const demQty = isSheet ? (m.DemandQty || 0).toFixed(2) : Math.floor(m.DemandQty || 0);
+                        const onHand = m.OnHandQty || 0;
+                        const demand = m.DemandQty || m.RequiredQty;
+                        const required = m.RequiredQty || 0;
+                        let status = 'missing';
+                        if (onHand >= demand) status = 'star';
+                        else if (onHand >= required) status = 'check';
+                        else if (onHand > 0) status = 'partial';
+                        return `
+                        <tr class="mtl-${status}">
+                            <td>${m.PartNum}</td>
+                            <td>${m.PartDescription || '-'}</td>
+                            <td>${reqQty} <span class="uom">${m.ReqUOM || ''}</span></td>
+                            <td>${ohQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                            <td>${demQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                            <td>
+                                ${status === 'star' ? '<span class="mtl-star">★</span>' : 
+                                  status === 'check' ? '<span class="mtl-check">✓</span>' : 
+                                  status === 'partial' ? '<span class="mtl-partial">⚠</span>' : 
+                                  '<span class="mtl-missing">✗</span>'}
+                            </td>
+                        </tr>
+                    `}).join('')}
+                </tbody>
+            </table>
+        `;
+        if (showMoreBtn) {
+            html += `<button class="show-more-btn" onclick="showAllMaterials('${jobNum}', ${asmSeq}, ${oprSeq})">Show All ${materials.length} Materials</button>`;
+        }
+    } else {
+        html += '<h4>Materials</h4><div class="detail-empty">No materials required</div>';
+    }
+    html += '</div>';
+    
+    html += '</div>'; // end detail-columns
+    
+    content.innerHTML = html;
+    
+    // Load last check-in for WELD (this is the only API call we keep)
+    if (showLastCheckin) {
+        const opCode = row.dataset.opcode;
+        loadLastCheckin(partNum, opCode, content);
+    }
+}
+
+function loadLastCheckin(partNum, opCode, container) {
+    const url = opCode ? `/api/last_checkin/${partNum}/${opCode}` : `/api/last_checkin/${partNum}`;
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data) {
+                const checkinGroup = container.querySelector('#last-checkin-group');
+                if (checkinGroup) {
+                    checkinGroup.innerHTML = `
+                        <div class="info-item last-checkin">
+                            <span class="info-label">Last Check-in (${data.EmployeeName || data.EmployeeNum})</span>
+                            <span class="info-value">${formatDate(data.ClockInDate)} - Job ${data.JobNum} - Qty ${Math.floor(data.LaborQty)}</span>
+                        </div>
+                    `;
+                }
+            }
+        })
+        .catch(err => console.error('Error loading last checkin:', err));
+}
+
+function showAllMaterials(jobNum, asmSeq, oprSeq) {
+    // Get materials from JavaScript object - NOT from DOM
+    const key = `${jobNum}-${asmSeq}-${oprSeq}`;
+    const details = jobDetails[key] || { materials: [] };
+    const materials = details.materials || [];
+    
+    const mtlCol = document.querySelector('#detail-panel-content .detail-col:last-child');
+    if (mtlCol && materials.length > 0) {
+        mtlCol.innerHTML = `
+            <h4>Materials (${materials.length})</h4>
+            <table class="mtl-table">
+                <thead>
+                    <tr>
+                        <th>Part</th>
+                        <th>Description</th>
+                        <th>Req</th>
+                        <th>On Hand</th>
+                        <th>Demand</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${materials.map(m => {
+                        const isSheet = (m.ReqUOM === 'SH100' || m.OnHandUOM === 'SH100');
+                        const reqQty = isSheet ? m.RequiredQty.toFixed(2) : Math.floor(m.RequiredQty);
+                        const ohQty = isSheet ? (m.OnHandQty || 0).toFixed(2) : Math.floor(m.OnHandQty || 0);
+                        const demQty = isSheet ? (m.DemandQty || 0).toFixed(2) : Math.floor(m.DemandQty || 0);
+                        const onHand = m.OnHandQty || 0;
+                        const demand = m.DemandQty || m.RequiredQty;
+                        const required = m.RequiredQty || 0;
+                        let status = 'missing';
+                        if (onHand >= demand) status = 'star';
+                        else if (onHand >= required) status = 'check';
+                        else if (onHand > 0) status = 'partial';
+                        return `
+                        <tr class="mtl-${status}">
+                            <td>${m.PartNum}</td>
+                            <td>${m.PartDescription || '-'}</td>
+                            <td>${reqQty} <span class="uom">${m.ReqUOM || ''}</span></td>
+                            <td>${ohQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                            <td>${demQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                            <td>
+                                ${status === 'star' ? '<span class="mtl-star">★</span>' : 
+                                  status === 'check' ? '<span class="mtl-check">✓</span>' : 
+                                  status === 'partial' ? '<span class="mtl-partial">⚠</span>' : 
+                                  '<span class="mtl-missing">✗</span>'}
+                            </td>
+                        </tr>
+                    `}).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+}
+
+// --- SORTING ---
+document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const column = th.dataset.sort;
+        
+        if (currentSort.column === column) {
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.column = column;
+            currentSort.direction = 'asc';
+        }
+        
+        sortTable(column, currentSort.direction);
+        updateSortIndicators();
+        applyFilters();  // Re-apply pagination after sort
+    });
+});
+
+function sortTable(column, direction) {
+    const tbody = document.getElementById('job-tbody');
+    const rows = Array.from(tbody.querySelectorAll('.job-row'));
+    
+    rows.sort((a, b) => {
+        let aVal, bVal;
+        a.querySelectorAll('td[data-value]').forEach((td, idx) => {
+            const th = document.querySelectorAll('th.sortable')[idx];
+            if (th && th.dataset.sort === column) aVal = td.dataset.value;
+        });
+        b.querySelectorAll('td[data-value]').forEach((td, idx) => {
+            const th = document.querySelectorAll('th.sortable')[idx];
+            if (th && th.dataset.sort === column) bVal = td.dataset.value;
+        });
+        
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return direction === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        
+        const compare = (aVal || '').localeCompare(bVal || '');
+        return direction === 'asc' ? compare : -compare;
+    });
+    
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+function updateSortIndicators() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+    });
+    
+    if (!currentSort.column) return;
+    
+    const activeHeader = document.querySelector(`th[data-sort="${currentSort.column}"]`);
+    if (activeHeader) {
+        activeHeader.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    }
+}
+
+// --- FILTERING (search box) ---
+document.getElementById('search-box').addEventListener('input', () => applyFilters());
+
+// --- SELECT ALL CHECKBOX ---
+const selectAllCheckbox = document.getElementById('select-all');
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        // Only select visible rows on current page
+        document.querySelectorAll('.job-row').forEach(row => {
+            if (row.style.display !== 'none') {
+                row.querySelector('.row-select').checked = isChecked;
+            }
+        });
+    });
+}
+
+// Initialize pagination on load
+applyFilters();
+</script>
+{% endblock %}

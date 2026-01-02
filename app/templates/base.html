@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}The Queue{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <h1>The Queue</h1>
+        <nav class="header-nav">
+            {% if workcells %}
+            <select class="dept-selector" onchange="if(this.value) window.location.href=this.value">
+                <option value="">Switch Work Cell...</option>
+                {% for wc in workcells %}
+                <option value="{{ url_for('views.queue', workcell_id=wc.id) }}"
+                    {% if workcell_id == wc.id %}selected{% endif %}>
+                    {{ wc.name }}
+                </option>
+                {% endfor %}
+            </select>
+            {% endif %}
+            <a href="{{ url_for('views.index') }}" class="back-link">All Work Cells</a>
+        </nav>
+    </header>
+    
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>
