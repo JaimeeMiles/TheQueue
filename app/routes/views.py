@@ -70,6 +70,28 @@ def api_jobs_by_material(workcell_id, material_partnum):
     return jsonify(job_keys)
 
 
+@views.route('/api/colors/<workcell_id>')
+def api_colors(workcell_id):
+    """API endpoint for color list - loaded async for performance."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_colors_for_workcell
+    colors = get_colors_for_workcell(workcell_id)
+    return jsonify(colors)
+
+
+@views.route('/api/jobs_by_color/<workcell_id>/<color>')
+def api_jobs_by_color(workcell_id, color):
+    """API endpoint to get job keys that have a specific finish color."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_jobs_using_color
+    job_keys = get_jobs_using_color(workcell_id, color)
+    return jsonify(job_keys)
+
+
 @views.route('/api/queue/<workcell_id>')
 def api_queue(workcell_id):
     """API endpoint for auto-refresh."""

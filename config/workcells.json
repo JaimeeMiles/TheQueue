@@ -6,21 +6,25 @@
       "columns": ["startdate", "operation", "job", "part", "description", "left", "mtl"],
       "detail_fields": ["qty", "done", "left", "nextlocation", "ophours", "cycle", "last_checkin"],
       "material_limit": null,
-      "group_by_material": true
+      "group_by_material": true,
+      "show_viewpdf": true
     },
     "PRESS": {
       "name": "Press",
       "ops": ["BENDBLUE", "BENDM54", "BEND-RD", "BENDROLL", "BENDTOYO", "BNDHP100", "CLINCH"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "BURN": {
       "name": "Burn",
       "ops": ["BURN"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_mass_actions": false,
+      "custom_buttons": ["kanban"]
     },
     "SAW": {
       "name": "Saw",
@@ -35,21 +39,25 @@
       "ops": ["NOTCH", "PIPETHRD", "WELD", "WELDDIES", "WELDM50", "WELDMAD", "WELDPROD", "WELD-RD", "WELDXR"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "CASTING": {
       "name": "Casting",
       "ops": ["CAST", "CASTMIL1", "CASTMIL2", "CUT-CAST"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_mass_actions": false,
+      "custom_buttons": ["kanban"]
     },
     "DIES": {
       "name": "Dies",
       "ops": ["DIEGRIND", "DRILLDIE", "TURNDIE"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "group_by_material": true
     },
     "FBS": {
       "name": "Follow Bars",
@@ -63,56 +71,65 @@
       "ops": ["LATHE", "MACHASM", "MACH-RD", "MANLATHE", "MILL", "SETUP", "TURN"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "preptime", "machload", "machrun", "machunload", "machprogram", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "POWDER": {
       "name": "Powder Coat",
       "ops": ["PC-DLVR", "PC-DLVRF", "PC-PREP", "PC-SPRAY", "PC-SPRYF", "PWDR-RD", "SANDBLST"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "finishcolor", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true,
+      "group_by_color": true
     },
     "SHIPPING": {
       "name": "Shipping",
       "ops": ["ASSEMBLE", "BENUSTRP", "BOX-CRBD", "BOX-FOAM", "PAINT", "PC-BLTNK", "SCRNPRNT", "SHEAR", "SHELF-CB", "SHELF-FM", "TUMBLE", "WRAP-CB"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "BLACKENING": {
       "name": "Blackening",
       "ops": ["BLACKEN"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "ASM-M50": {
       "name": "Assembly M50",
       "ops": ["ASM-FINL", "ASM-M50", "SHLFM50", "UNASM"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "ASM-MAD": {
       "name": "Assembly MAD",
       "ops": ["ASM-ATT", "ASM-ATTF", "ASM-MAD", "ASM-MADF", "ASM-XR", "ASM-XRF", "MAD-RD", "SHELFMAD", "SHELFXR"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": 20
+      "material_limit": 20,
+      "show_viewpdf": true
     },
     "CRATING": {
       "name": "Crating",
       "ops": ["CRATE"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "WIRE": {
       "name": "Wire",
       "ops": ["ASMCOMP", "ASMCPEL", "ASMCPELF", "ASMWIRE", "SHLFELEC"],
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
-      "material_limit": null
+      "material_limit": null,
+      "show_viewpdf": true
     },
     "QC": {
       "name": "Quality Control",

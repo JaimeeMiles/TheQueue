@@ -162,6 +162,21 @@ body {
     padding: 0.6rem 1.5rem;
 }
 
+.kanban-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.kanban-btn:hover {
+    background: #2563eb;
+}
+
 .refresh-btn {
     background: #2a7a3a;
     color: white;
@@ -252,7 +267,14 @@ body {
     gap: 0.5rem;
 }
 
-.material-select {
+.color-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.material-select,
+.color-select {
     padding: 0.75rem 1rem;
     font-size: 1rem;
     font-weight: 600;
@@ -261,14 +283,16 @@ body {
     border-radius: 8px;
     color: var(--text-primary);
     cursor: pointer;
-    min-width: 350px;
+    min-width: 250px;
 }
 
-.material-select:hover {
+.material-select:hover,
+.color-select:hover {
     border-color: var(--border-light);
 }
 
-.material-select:focus {
+.material-select:focus,
+.color-select:focus {
     outline: none;
     border-color: var(--accent);
 }
@@ -487,6 +511,19 @@ body {
     color: var(--text-primary);
 }
 
+.detail-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.detail-panel-actions .viewpdf-btn,
+.detail-panel-actions .start-btn,
+.detail-panel-actions .end-btn {
+    padding: 0.5rem 1.25rem;
+    font-size: 0.95rem;
+}
+
 .detail-panel-close {
     background: none;
     border: none;
@@ -628,6 +665,22 @@ body {
 .start-btn:hover,
 .end-btn:hover {
     background: #16a34a;
+}
+
+.viewpdf-btn {
+    background: #8b5cf6;
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.viewpdf-btn:hover {
+    background: #7c3aed;
 }
 
 /* Notes displayed on its own line */

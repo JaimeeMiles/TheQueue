@@ -64,7 +64,8 @@ def get_workcell_config(workcell_id):
 def get_materials_for_workcell(workcell_id):
     """
     Get all unique material part numbers for jobs in a workcell.
-    Used for the material filter dropdown on LASER/SAW.
+    Used for the material filter dropdown.
+    Includes materials from backflush operations (same logic as detail panel).
     Returns list of dicts with PartNum and PartDescription.
     """
     ops = get_workcell_ops(workcell_id)
@@ -74,25 +75,58 @@ def get_materials_for_workcell(workcell_id):
     placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
     params = {f'op{i}': op for i, op in enumerate(ops)}
     
+    # This query finds materials linked to:
+    # 1. The visible (quantity) operations in this workcell
+    # 2. Any backflush operations that precede those quantity operations
     query = f"""
-        SELECT DISTINCT jm.PartNum, p.PartDescription
+        WITH VisibleOps AS (
+            -- Get the visible (quantity) operations for this workcell
+            SELECT jo.Company, jo.JobNum, jo.AssemblySeq, jo.OprSeq
+            FROM Erp.JobOper jo
+            INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+            WHERE jh.JobComplete = 0
+              AND jh.JobReleased = 1
+              AND jo.OpCode IN ({placeholders})
+              AND jo.OpComplete = 0
+              AND jo.LaborEntryMethod != 'B'
+        ),
+        BackflushOps AS (
+            -- For each visible op, find preceding backflush ops (excluding PAINT)
+            SELECT jo.Company, jo.JobNum, jo.AssemblySeq, jo.OprSeq
+            FROM Erp.JobOper jo
+            INNER JOIN VisibleOps vo 
+                ON jo.Company = vo.Company 
+                AND jo.JobNum = vo.JobNum 
+                AND jo.AssemblySeq = vo.AssemblySeq
+            WHERE jo.LaborEntryMethod = 'B'
+              AND jo.OpCode != 'PAINT'
+              AND jo.OprSeq < vo.OprSeq
+              AND jo.OprSeq > ISNULL(
+                  (SELECT MAX(jo2.OprSeq) 
+                   FROM Erp.JobOper jo2 
+                   WHERE jo2.Company = vo.Company 
+                     AND jo2.JobNum = vo.JobNum 
+                     AND jo2.AssemblySeq = vo.AssemblySeq
+                     AND jo2.OprSeq < vo.OprSeq 
+                     AND jo2.LaborEntryMethod != 'B'), 0)
+        ),
+        AllRelevantOps AS (
+            SELECT Company, JobNum, AssemblySeq, OprSeq FROM VisibleOps
+            UNION
+            SELECT Company, JobNum, AssemblySeq, OprSeq FROM BackflushOps
+        )
+        SELECT DISTINCT jm.PartNum, 
+               REPLACE(p.PartDescription, ' - die billet ungrooved', '') AS PartDescription
         FROM Erp.JobMtl jm
-        INNER JOIN Erp.JobOper jo 
-            ON jm.Company = jo.Company 
-            AND jm.JobNum = jo.JobNum 
-            AND jm.AssemblySeq = jo.AssemblySeq
-            AND jm.RelatedOperation = jo.OprSeq
-        INNER JOIN Erp.JobHead jh
-            ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        INNER JOIN AllRelevantOps aro 
+            ON jm.Company = aro.Company 
+            AND jm.JobNum = aro.JobNum 
+            AND jm.AssemblySeq = aro.AssemblySeq
+            AND jm.RelatedOperation = aro.OprSeq
         LEFT JOIN Erp.Part p
             ON jm.Company = p.Company AND jm.PartNum = p.PartNum
-        WHERE jh.JobComplete = 0
-          AND jh.JobReleased = 1
-          AND jo.OpCode IN ({placeholders})
-          AND jo.OpComplete = 0
-          AND jo.LaborEntryMethod != 'B'
-          AND jm.RequiredQty > 0
-        ORDER BY p.PartDescription, jm.PartNum
+        WHERE jm.RequiredQty > 0
+        ORDER BY PartDescription, jm.PartNum
     """
     
     return sql_query(query, params)
@@ -110,12 +144,19 @@ def get_bulk_operations(job_nums):
     params = {f'j{i}': jn for i, jn in enumerate(job_nums)}
     
     query = f"""
-        SELECT JobNum, OprSeq, OpCode, OpDesc, QtyCompleted, 
-               CAST(OpComplete AS INT) AS OpComplete, ProdStandard, AssemblySeq
-        FROM Erp.JobOper
-        WHERE JobNum IN ({placeholders})
-          AND LaborEntryMethod != 'B'
-        ORDER BY JobNum, AssemblySeq DESC, OprSeq ASC
+        SELECT jo.JobNum, jo.OprSeq, jo.OpCode, jo.OpDesc, jo.QtyCompleted, 
+               CAST(jo.OpComplete AS INT) AS OpComplete, jo.ProdStandard, jo.AssemblySeq,
+               CONVERT(VARCHAR(10), 
+                   (SELECT MAX(ld.ClockInDate) 
+                    FROM Erp.LaborDtl ld 
+                    WHERE ld.JobNum = jo.JobNum 
+                      AND ld.AssemblySeq = jo.AssemblySeq
+                      AND ld.OprSeq = jo.OprSeq 
+                      AND ld.LaborQty > 0), 23) AS LastEntryDate
+        FROM Erp.JobOper jo
+        WHERE jo.JobNum IN ({placeholders})
+          AND jo.LaborEntryMethod != 'B'
+        ORDER BY jo.JobNum, jo.AssemblySeq DESC, jo.OprSeq ASC
     """
     
     rows = sql_query(query, params)
@@ -288,6 +329,7 @@ def get_jobs_using_material(workcell_id, material_partnum):
     """
     Get job keys (JobNum-AssemblySeq-OprSeq) that use a specific material.
     Used for filtering by material selection.
+    Includes materials from backflush operations (same logic as detail panel).
     """
     ops = get_workcell_ops(workcell_id)
     if not ops:
@@ -298,23 +340,116 @@ def get_jobs_using_material(workcell_id, material_partnum):
     params['material'] = material_partnum
     
     query = f"""
+        WITH VisibleOps AS (
+            -- Get the visible (quantity) operations for this workcell
+            SELECT jo.Company, jo.JobNum, jo.AssemblySeq, jo.OprSeq
+            FROM Erp.JobOper jo
+            INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+            WHERE jh.JobComplete = 0
+              AND jh.JobReleased = 1
+              AND jo.OpCode IN ({placeholders})
+              AND jo.OpComplete = 0
+              AND jo.LaborEntryMethod != 'B'
+        ),
+        BackflushOps AS (
+            -- For each visible op, find preceding backflush ops (excluding PAINT)
+            SELECT jo.Company, jo.JobNum, jo.AssemblySeq, jo.OprSeq, vo.OprSeq AS OwnerOprSeq
+            FROM Erp.JobOper jo
+            INNER JOIN VisibleOps vo 
+                ON jo.Company = vo.Company 
+                AND jo.JobNum = vo.JobNum 
+                AND jo.AssemblySeq = vo.AssemblySeq
+            WHERE jo.LaborEntryMethod = 'B'
+              AND jo.OpCode != 'PAINT'
+              AND jo.OprSeq < vo.OprSeq
+              AND jo.OprSeq > ISNULL(
+                  (SELECT MAX(jo2.OprSeq) 
+                   FROM Erp.JobOper jo2 
+                   WHERE jo2.Company = vo.Company 
+                     AND jo2.JobNum = vo.JobNum 
+                     AND jo2.AssemblySeq = vo.AssemblySeq
+                     AND jo2.OprSeq < vo.OprSeq 
+                     AND jo2.LaborEntryMethod != 'B'), 0)
+        ),
+        AllRelevantOps AS (
+            -- Visible ops own themselves
+            SELECT Company, JobNum, AssemblySeq, OprSeq, OprSeq AS OwnerOprSeq FROM VisibleOps
+            UNION
+            -- Backflush ops map to their owner
+            SELECT Company, JobNum, AssemblySeq, OprSeq, OwnerOprSeq FROM BackflushOps
+        )
         SELECT DISTINCT 
-            jo.JobNum + '-' + CAST(jo.AssemblySeq AS VARCHAR) + '-' + CAST(jo.OprSeq AS VARCHAR) AS JobKey
+            aro.JobNum + '-' + CAST(aro.AssemblySeq AS VARCHAR) + '-' + CAST(aro.OwnerOprSeq AS VARCHAR) AS JobKey
         FROM Erp.JobMtl jm
-        INNER JOIN Erp.JobOper jo 
-            ON jm.Company = jo.Company 
-            AND jm.JobNum = jo.JobNum 
-            AND jm.AssemblySeq = jo.AssemblySeq
-            AND jm.RelatedOperation = jo.OprSeq
-        INNER JOIN Erp.JobHead jh
-            ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        INNER JOIN AllRelevantOps aro 
+            ON jm.Company = aro.Company 
+            AND jm.JobNum = aro.JobNum 
+            AND jm.AssemblySeq = aro.AssemblySeq
+            AND jm.RelatedOperation = aro.OprSeq
+        WHERE jm.PartNum = :material
+          AND jm.RequiredQty > 0
+    """
+    
+    result = sql_query(query, params)
+    return [row['JobKey'] for row in result]
+
+
+def get_colors_for_workcell(workcell_id):
+    """
+    Get all unique finish colors for jobs in a workcell.
+    Used for the color filter dropdown on POWDER.
+    Returns list of dicts with FinishColor.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    
+    query = f"""
+        SELECT DISTINCT joud.FinishColor_c AS FinishColor
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        LEFT JOIN Erp.JobOper_UD joud ON jo.SysRowID = joud.ForeignSysRowID
         WHERE jh.JobComplete = 0
           AND jh.JobReleased = 1
           AND jo.OpCode IN ({placeholders})
           AND jo.OpComplete = 0
           AND jo.LaborEntryMethod != 'B'
-          AND jm.PartNum = :material
-          AND jm.RequiredQty > 0
+          AND joud.FinishColor_c IS NOT NULL
+          AND joud.FinishColor_c != ''
+        ORDER BY joud.FinishColor_c
+    """
+    
+    return sql_query(query, params)
+
+
+def get_jobs_using_color(workcell_id, color):
+    """
+    Get job keys (JobNum-AssemblySeq-OprSeq) that have a specific finish color.
+    Used for filtering by color selection.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    params['color'] = color
+    
+    query = f"""
+        SELECT DISTINCT 
+            jo.JobNum + '-' + CAST(jo.AssemblySeq AS VARCHAR) + '-' + CAST(jo.OprSeq AS VARCHAR) AS JobKey
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        LEFT JOIN Erp.JobOper_UD joud ON jo.SysRowID = joud.ForeignSysRowID
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+          AND joud.FinishColor_c = :color
     """
     
     result = sql_query(query, params)
@@ -324,7 +459,7 @@ def get_jobs_using_material(workcell_id, material_partnum):
 def get_last_checkin(part_num, op_code=None):
     """
     Get the last labor check-in for a part number at a specific operation.
-    Used by WELD to see if someone recently worked on the same part.
+    Matches against JobAsmbl.PartNum so it works for both header parts and sub-assemblies.
     """
     if op_code:
         query = """
@@ -332,16 +467,18 @@ def get_last_checkin(part_num, op_code=None):
                 ld.EmployeeNum,
                 e.Name AS EmployeeName,
                 ld.LaborQty,
-                ld.ClockInDate,
+                CONVERT(VARCHAR(10), ld.ClockInDate, 23) AS ClockInDate,
                 ld.ClockInTime,
                 ld.JobNum,
                 jo.OpCode
             FROM Erp.LaborDtl ld
-            INNER JOIN Erp.JobHead jh ON ld.Company = jh.Company AND ld.JobNum = jh.JobNum
+            INNER JOIN Erp.JobAsmbl ja ON ld.Company = ja.Company 
+                AND ld.JobNum = ja.JobNum 
+                AND ld.AssemblySeq = ja.AssemblySeq
             INNER JOIN Erp.JobOper jo ON ld.Company = jo.Company AND ld.JobNum = jo.JobNum 
                 AND ld.AssemblySeq = jo.AssemblySeq AND ld.OprSeq = jo.OprSeq
             LEFT JOIN Erp.EmpBasic e ON ld.Company = e.Company AND ld.EmployeeNum = e.EmpID
-            WHERE jh.PartNum = :part_num
+            WHERE ja.PartNum = :part_num
               AND jo.OpCode = :op_code
               AND ld.LaborQty > 0
             ORDER BY ld.ClockInDate DESC, ld.ClockInTime DESC
@@ -353,13 +490,15 @@ def get_last_checkin(part_num, op_code=None):
                 ld.EmployeeNum,
                 e.Name AS EmployeeName,
                 ld.LaborQty,
-                ld.ClockInDate,
+                CONVERT(VARCHAR(10), ld.ClockInDate, 23) AS ClockInDate,
                 ld.ClockInTime,
                 ld.JobNum
             FROM Erp.LaborDtl ld
-            INNER JOIN Erp.JobHead jh ON ld.Company = jh.Company AND ld.JobNum = jh.JobNum
+            INNER JOIN Erp.JobAsmbl ja ON ld.Company = ja.Company 
+                AND ld.JobNum = ja.JobNum 
+                AND ld.AssemblySeq = ja.AssemblySeq
             LEFT JOIN Erp.EmpBasic e ON ld.Company = e.Company AND ld.EmployeeNum = e.EmpID
-            WHERE jh.PartNum = :part_num
+            WHERE ja.PartNum = :part_num
               AND ld.LaborQty > 0
             ORDER BY ld.ClockInDate DESC, ld.ClockInTime DESC
         """
@@ -522,9 +661,9 @@ def get_jobs_for_workcell(workcell_id):
         )
         SELECT 
             jh.JobNum,
-            jh.PartNum,
-            p.PartDescription,
-            jh.ProdQty,
+            CASE WHEN jo.AssemblySeq > 0 THEN ja.PartNum ELSE jh.PartNum END AS PartNum,
+            CASE WHEN jo.AssemblySeq > 0 THEN pa.PartDescription ELSE p.PartDescription END AS PartDescription,
+            CASE WHEN jo.AssemblySeq > 0 THEN ja.RequiredQty ELSE jh.ProdQty END AS ProdQty,
             jh.SchedCode AS Priority,
             jo.OprSeq,
             jo.OpCode,
@@ -573,6 +712,10 @@ def get_jobs_for_workcell(workcell_id):
             AND jo.JobNum = sac.JobNum
         LEFT JOIN Erp.Part p 
             ON jh.Company = p.Company AND jh.PartNum = p.PartNum
+        LEFT JOIN Erp.JobAsmbl ja
+            ON jo.Company = ja.Company AND jo.JobNum = ja.JobNum AND jo.AssemblySeq = ja.AssemblySeq
+        LEFT JOIN Erp.Part pa
+            ON ja.Company = pa.Company AND ja.PartNum = pa.PartNum
         LEFT JOIN MaterialAgg ma
             ON jo.Company = ma.Company
             AND jo.JobNum = ma.JobNum

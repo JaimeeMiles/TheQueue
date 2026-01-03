@@ -2,15 +2,86 @@
 
 {% block title %}The Queue - Select Work Cell{% endblock %}
 
+{% block head %}
+<style>
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(18, 18, 18, 0.95);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        gap: 2rem;
+    }
+    
+    .loading-overlay.active {
+        display: flex;
+    }
+    
+    .loading-text {
+        font-size: 1.5rem;
+        color: #ffffff;
+        font-weight: 600;
+    }
+    
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid #2a2a2a;
+        border-top: 4px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="home-container">
     <h1>Select Work Cell</h1>
     <div class="workcell-grid">
         {% for wc in workcells %}
-        <a href="{{ url_for('views.queue', workcell_id=wc.id) }}" class="workcell-btn">
+        <a href="{{ url_for('views.queue', workcell_id=wc.id) }}" class="workcell-btn" data-workcell="{{ wc.name }}">
             {{ wc.name }}
         </a>
         {% endfor %}
     </div>
 </div>
+
+<div class="loading-overlay" id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">Loading...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.workcell-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = btn.getAttribute('href');
+        const name = btn.dataset.workcell;
+        
+        const overlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        
+        loadingText.textContent = `Loading ${name}...`;
+        overlay.classList.add('active');
+        
+        // Navigate after a brief moment to let the overlay show
+        setTimeout(() => {
+            window.location.href = href;
+        }, 50);
+    });
+});
+</script>
 {% endblock %}

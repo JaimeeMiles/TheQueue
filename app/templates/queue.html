@@ -9,8 +9,13 @@
         <h2>{{ workcell_name }}</h2>
     </div>
     <div class="mass-actions">
+        {% if workcell_config.show_mass_actions|default(true) %}
         <button class="start-btn mass-btn">Mass Start</button>
         <button class="end-btn mass-btn">Mass End</button>
+        {% endif %}
+        {% if 'kanban' in (workcell_config.custom_buttons or []) %}
+        <button class="kanban-btn mass-btn">Kanban</button>
+        {% endif %}
     </div>
     <button onclick="location.reload()" class="refresh-btn">🔄 Refresh Data</button>
 </div>
@@ -31,6 +36,14 @@
     <div class="material-filter">
         <select id="material-select" class="material-select">
             <option value="all">Loading materials...</option>
+        </select>
+    </div>
+    {% endif %}
+    
+    {% if workcell_config.group_by_color %}
+    <div class="color-filter">
+        <select id="color-select" class="color-select">
+            <option value="all">Loading colors...</option>
         </select>
     </div>
     {% endif %}
@@ -145,7 +158,16 @@
 <div id="detail-panel" class="detail-panel hidden">
     <div class="detail-panel-header">
         <span id="detail-panel-title"></span>
-        <button id="detail-panel-close" class="detail-panel-close">✕</button>
+        <div class="detail-panel-actions">
+            {% if workcell_config.show_viewpdf %}
+            <button class="viewpdf-btn" id="panel-viewpdf-btn">View PDF</button>
+            {% endif %}
+            {% if workcell_config.show_mass_actions|default(true) %}
+            <button class="start-btn" id="panel-start-btn">Start</button>
+            <button class="end-btn" id="panel-end-btn">End</button>
+            {% endif %}
+            <button id="detail-panel-close" class="detail-panel-close">✕</button>
+        </div>
     </div>
     <div id="detail-panel-content" class="detail-content"></div>
 </div>
@@ -184,7 +206,9 @@ let filteredRows = [];  // Rows that pass current filters
 // Current filters
 let currentOpFilter = 'all';
 let currentMaterialFilter = 'all';
+let currentColorFilter = 'all';
 let materialJobKeys = null;  // null = show all, array = show only these
+let colorJobKeys = null;  // null = show all, array = show only these
 
 // Detail panel references (declared early for use in applyFilters)
 let currentExpandedRow = null;
@@ -245,6 +269,48 @@ if (materialSelect) {
     });
 }
 
+// --- COLOR FILTER DROPDOWN ---
+const colorSelect = document.getElementById('color-select');
+if (colorSelect) {
+    // Load colors in background
+    fetch('/api/colors/{{ workcell_id }}')
+        .then(response => response.json())
+        .then(colors => {
+            colorSelect.innerHTML = '<option value="all">All Colors</option>';
+            colors.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.FinishColor;
+                option.textContent = c.FinishColor;
+                colorSelect.appendChild(option);
+            });
+        })
+        .catch(err => {
+            colorSelect.innerHTML = '<option value="all">All Colors</option>';
+            console.error('Failed to load colors:', err);
+        });
+    
+    colorSelect.addEventListener('change', () => {
+        currentColorFilter = colorSelect.value;
+        if (currentColorFilter === 'all') {
+            colorJobKeys = null;
+            applyFilters();
+        } else {
+            // Fetch jobs that use this color
+            fetch('/api/jobs_by_color/{{ workcell_id }}/' + encodeURIComponent(currentColorFilter))
+                .then(response => response.json())
+                .then(jobKeys => {
+                    colorJobKeys = jobKeys;
+                    applyFilters();
+                })
+                .catch(err => {
+                    console.error('Failed to load jobs by color:', err);
+                    colorJobKeys = null;
+                    applyFilters();
+                });
+        }
+    });
+}
+
 function applyFilters() {
     const searchQuery = document.getElementById('search-box').value.toLowerCase();
     const tbody = document.getElementById('job-tbody');
@@ -259,8 +325,9 @@ function applyFilters() {
         const matchesSearch = searchQuery === '' || text.includes(searchQuery);
         const matchesOp = currentOpFilter === 'all' || opCode === currentOpFilter;
         const matchesMaterial = materialJobKeys === null || materialJobKeys.includes(jobKey);
+        const matchesColor = colorJobKeys === null || colorJobKeys.includes(jobKey);
         
-        return matchesSearch && matchesOp && matchesMaterial;
+        return matchesSearch && matchesOp && matchesMaterial && matchesColor;
     });
     
     // Reset to page 1 when filters change
@@ -416,6 +483,31 @@ function formatDate(dateStr) {
     return '-';
 }
 
+function formatLastEntry(dateStr) {
+    if (!dateStr) return '-';
+    
+    // Parse YYYY-MM-DD format
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
+    
+    // Check if more than a year ago
+    const entryDate = new Date(dateStr);
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    
+    if (entryDate < oneYearAgo) {
+        // Show MM/DD/YY for old dates
+        return `${month}/${day}/${year.slice(-2)}`;
+    } else {
+        // Show MM/DD for recent dates
+        return `${month}/${day}`;
+    }
+}
+
 function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData, content, row) {
     
     // Get data from JavaScript object - NOT from DOM
@@ -522,11 +614,7 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
     // Spacer to push next items to the right
     html += '<div class="info-spacer"></div>';
     
-    // Start and End buttons
-    html += '<button class="start-btn">Start</button>';
-    html += '<button class="end-btn">End</button>';
-    
-    // Next Location (after buttons)
+    // Next Location (after spacer, right side)
     if (detailFields.includes('nextlocation') && extraData.nextlocation) {
         html += '<div class="info-group info-group-right">';
         html += `<div class="info-item"><span class="info-label">Next Loc</span><span class="info-value">${extraData.nextlocation}</span></div>`;
@@ -555,6 +643,7 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
                         <th>Operation</th>
                         <th>Cycle</th>
                         <th>Done</th>
+                        <th>Last</th>
                         <th>✓</th>
                     </tr>
                 </thead>
@@ -565,6 +654,7 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
                             <td>${op.OpCode}</td>
                             <td>${op.ProdStandard ? op.ProdStandard.toFixed(2) : '-'}</td>
                             <td>${Math.floor(op.QtyCompleted)}</td>
+                            <td>${op.LastEntryDate ? formatLastEntry(op.LastEntryDate) : '-'}</td>
                             <td><input type="checkbox" ${op.OpComplete ? 'checked' : ''} disabled></td>
                         </tr>
                     `).join('')}
@@ -659,7 +749,7 @@ function loadLastCheckin(partNum, opCode, container) {
                     checkinGroup.innerHTML = `
                         <div class="info-item last-checkin">
                             <span class="info-label">Last Check-in (${data.EmployeeName || data.EmployeeNum})</span>
-                            <span class="info-value">${formatDate(data.ClockInDate)} - Job ${data.JobNum} - Qty ${Math.floor(data.LaborQty)}</span>
+                            <span class="info-value">${formatLastEntry(data.ClockInDate)} - Job ${data.JobNum} - Qty ${Math.floor(data.LaborQty)}</span>
                         </div>
                     `;
                 }
