@@ -92,7 +92,8 @@
                 data-machrun="{{ job.MachRun or 0 }}"
                 data-machunload="{{ job.MachUnload or 0 }}"
                 data-machprogram="{{ job.MachProgram or '' }}"
-                data-priority="{{ job.Priority or '' }}">
+                data-priority="{{ job.Priority or '' }}"
+                data-pdfpath="{{ job.PdfPath or '' }}">
                 
                 <td class="col-select"><input type="checkbox" class="row-select" onclick="event.stopPropagation()"></td>
                 
@@ -159,9 +160,7 @@
     <div class="detail-panel-header">
         <span id="detail-panel-title"></span>
         <div class="detail-panel-actions">
-            {% if workcell_config.show_viewpdf %}
-            <button class="viewpdf-btn" id="panel-viewpdf-btn">View PDF</button>
-            {% endif %}
+            <button class="viewpdf-btn" id="panel-viewpdf-btn" style="display: none;">View PDF</button>
             {% if workcell_config.show_mass_actions|default(true) %}
             <button class="start-btn" id="panel-start-btn">Start</button>
             <button class="end-btn" id="panel-end-btn">End</button>
@@ -190,7 +189,8 @@ const jobDetails = {
 {% for job in jobs %}
     "{{ job.JobNum }}-{{ job.AssemblySeq }}-{{ job.OprSeq }}": {
         operations: {{ job.OperationsJSON|safe or '[]' }},
-        materials: {{ job.MaterialsJSON|safe or '[]' }}
+        materials: {{ job.MaterialsJSON|safe or '[]' }},
+        pdfPath: "{{ job.PdfPath|default('', true)|replace('\\', '\\\\')|safe }}"
     }{% if not loop.last %},{% endif %}
 {% endfor %}
 };
@@ -212,10 +212,12 @@ let colorJobKeys = null;  // null = show all, array = show only these
 
 // Detail panel references (declared early for use in applyFilters)
 let currentExpandedRow = null;
+let currentPdfPath = null;  // Track PDF path for View PDF button
 const detailPanel = document.getElementById('detail-panel');
 const detailPanelContent = document.getElementById('detail-panel-content');
 const detailPanelTitle = document.getElementById('detail-panel-title');
 const detailPanelClose = document.getElementById('detail-panel-close');
+const viewPdfBtn = document.getElementById('panel-viewpdf-btn');
 
 // --- OPERATION FILTER BUTTONS ---
 document.querySelectorAll('.op-filter-btn').forEach(btn => {
@@ -397,6 +399,17 @@ if (detailPanelClose) {
             currentExpandedRow.classList.remove('expanded');
             currentExpandedRow = null;
         }
+        currentPdfPath = null;
+    });
+}
+
+// --- VIEW PDF BUTTON ---
+if (viewPdfBtn) {
+    viewPdfBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentPdfPath) {
+            window.open('/api/pdf?path=' + encodeURIComponent(currentPdfPath), '_blank');
+        }
     });
 }
 
@@ -409,6 +422,7 @@ document.querySelectorAll('.job-row').forEach(row => {
             detailPanel.classList.add('hidden');
             row.classList.remove('expanded');
             currentExpandedRow = null;
+            currentPdfPath = null;
             return;
         }
         
@@ -426,6 +440,16 @@ document.querySelectorAll('.job-row').forEach(row => {
         const oprSeq = row.dataset.opr;
         const partNum = row.dataset.partnum;
         const qtyCompleted = row.dataset.qtyCompleted;
+        
+        // Get PDF path from jobDetails
+        const key = `${jobNum}-${asmSeq}-${oprSeq}`;
+        const details = jobDetails[key] || {};
+        currentPdfPath = details.pdfPath || null;
+        
+        // Show/hide View PDF button
+        if (viewPdfBtn) {
+            viewPdfBtn.style.display = currentPdfPath ? '' : 'none';
+        }
         
         const extraData = {
             notes: row.dataset.notes,

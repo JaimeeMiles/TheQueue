@@ -696,7 +696,8 @@ def get_jobs_for_workcell(workcell_id):
                 WHEN ma.StarMtls = ma.TotalMtls THEN 'star'
                 ELSE 'none'
             END AS MtlStatus,
-            ISNULL(ma.TotalMtls, 0) AS TotalMtls
+            ISNULL(ma.TotalMtls, 0) AS TotalMtls,
+            xfr.XFileName AS PdfPath
         FROM Erp.JobHead jh
         INNER JOIN Erp.JobOper jo 
             ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
@@ -721,6 +722,14 @@ def get_jobs_for_workcell(workcell_id):
             AND jo.JobNum = ma.JobNum
             AND jo.AssemblySeq = ma.AssemblySeq
             AND jo.OprSeq = ma.RelatedOperation
+        LEFT JOIN Ice.XFileAttch xfa
+            ON ja.Company = xfa.Company
+            AND ja.PartNum = xfa.Key1
+            AND ja.RevisionNum = xfa.Key2
+            AND xfa.RelatedToFile = 'PartRev'
+        LEFT JOIN Ice.XFileRef xfr
+            ON xfa.Company = xfr.Company
+            AND xfa.XFileRefNum = xfr.XFileRefNum
         WHERE jh.JobComplete = 0
           AND jh.JobReleased = 1
           AND jo.OpCode IN ({placeholders})

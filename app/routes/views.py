@@ -3,12 +3,14 @@
 #
 # Routes for The Queue web interface
 
-from flask import Blueprint, render_template, jsonify, request
+import os
+from flask import Blueprint, render_template, jsonify, request, send_file, abort
 from app.logic.queries import (
     get_workcells, get_jobs_for_workcell, get_jobs_with_details, get_job_materials, 
     get_job_operations, get_job_header, get_workcell_config,
     get_last_checkin, get_materials_for_workcell, WORKCELLS
 )
+from app.config import translate_pdf_path
 
 views = Blueprint('views', __name__)
 
@@ -121,3 +123,26 @@ def api_last_checkin(part_num, op_code=None):
     """API endpoint for last labor check-in on a part number at an operation (for WELD)."""
     checkin = get_last_checkin(part_num, op_code)
     return jsonify(checkin)
+
+
+@views.route('/api/pdf')
+def api_pdf():
+    """
+    Serve a PDF file. Takes UNC path as query param, translates to local path.
+    Usage: /api/pdf?path=\\\\server\\share\\file.pdf
+    """
+    unc_path = request.args.get('path')
+    if not unc_path:
+        abort(400, 'Missing path parameter')
+    
+    # Translate UNC path to local path
+    local_path = translate_pdf_path(unc_path)
+    
+    if not local_path or not os.path.exists(local_path):
+        abort(404, f'PDF not found: {local_path}')
+    
+    # Security check - ensure it's a PDF
+    if not local_path.lower().endswith('.pdf'):
+        abort(400, 'Only PDF files allowed')
+    
+    return send_file(local_path, mimetype='application/pdf')
