@@ -3,6 +3,10 @@
 # Uses Waitress, binds to 0.0.0.0
 
 import sys
+from dotenv import load_dotenv
+
+# Load .env before importing app
+load_dotenv()
 
 try:
     from app import create_app

@@ -146,6 +146,9 @@ def get_bulk_operations(job_nums):
     query = f"""
         SELECT jo.JobNum, jo.OprSeq, jo.OpCode, jo.OpDesc, jo.QtyCompleted, 
                CAST(jo.OpComplete AS INT) AS OpComplete, jo.ProdStandard, jo.AssemblySeq,
+               jod.ResourceGrpID, 
+               COALESCE(NULLIF(jod.ResourceID, ''), r.ResourceID) AS ResourceID,
+               rg.JCDept,
                CONVERT(VARCHAR(10), 
                    (SELECT MAX(ld.ClockInDate) 
                     FROM Erp.LaborDtl ld 
@@ -154,6 +157,18 @@ def get_bulk_operations(job_nums):
                       AND ld.OprSeq = jo.OprSeq 
                       AND ld.LaborQty > 0), 23) AS LastEntryDate
         FROM Erp.JobOper jo
+        LEFT JOIN Erp.JobOpDtl jod ON jo.Company = jod.Company 
+            AND jo.JobNum = jod.JobNum 
+            AND jo.AssemblySeq = jod.AssemblySeq 
+            AND jo.OprSeq = jod.OprSeq
+        LEFT JOIN Erp.ResourceGroup rg ON jod.Company = rg.Company
+            AND jod.ResourceGrpID = rg.ResourceGrpID
+        OUTER APPLY (
+            SELECT TOP 1 ResourceID 
+            FROM Erp.Resource 
+            WHERE ResourceGrpID = jod.ResourceGrpID 
+              AND Location = 1
+        ) r
         WHERE jo.JobNum IN ({placeholders})
           AND jo.LaborEntryMethod != 'B'
         ORDER BY jo.JobNum, jo.AssemblySeq DESC, jo.OprSeq ASC
@@ -768,6 +783,18 @@ def get_job_operations(job_num):
     return sql_query(query, {'job_num': job_num})
 
 
+def get_employee(emp_id):
+    """Look up an employee by ID. Returns dict with EmpID and Name, or None."""
+    query = """
+        SELECT EmpID, Name
+        FROM Erp.EmpBasic
+        WHERE EmpID = :emp_id
+          AND EmpStatus = 'A'
+    """
+    result = sql_query(query, {'emp_id': emp_id})
+    return result[0] if result else None
+
+
 def get_job_header(job_num):
     """Get job header info."""
     query = """
@@ -861,3 +888,84 @@ def get_job_materials(job_num, assembly_seq, opr_seq):
         m['QtyShort'] = max(0, required - on_hand)
     
     return materials
+
+
+def get_active_labor_details(job_nums_with_ops):
+    """
+    Get job details for active labor records.
+    
+    Args:
+        job_nums_with_ops: list of dicts with JobNum, AssemblySeq, OprSeq
+    
+    Returns:
+        dict mapping 'JobNum-AsmSeq-OprSeq' to job details
+    """
+    if not job_nums_with_ops:
+        return {}
+    
+    # Build query to get job/part details
+    conditions = []
+    params = {}
+    for i, rec in enumerate(job_nums_with_ops):
+        conditions.append(f"(jh.JobNum = :job{i} AND jo.AssemblySeq = :asm{i} AND jo.OprSeq = :opr{i})")
+        params[f'job{i}'] = rec['JobNum']
+        params[f'asm{i}'] = rec['AssemblySeq']
+        params[f'opr{i}'] = rec['OprSeq']
+    
+    where_clause = ' OR '.join(conditions)
+    
+    query = f"""
+        SELECT jh.JobNum, jh.PartNum, p.PartDescription, jh.ProdQty,
+               jo.AssemblySeq, jo.OprSeq, jo.OpCode, jo.QtyCompleted,
+               -- Get qty completed from prior non-backflush operation
+               (SELECT TOP 1 jo_prior.QtyCompleted
+                FROM Erp.JobOper jo_prior
+                WHERE jo_prior.JobNum = jo.JobNum
+                  AND jo_prior.AssemblySeq = jo.AssemblySeq
+                  AND jo_prior.OprSeq < jo.OprSeq
+                  AND jo_prior.LaborEntryMethod != 'B'
+                ORDER BY jo_prior.OprSeq DESC) AS QtyFromPrior,
+               -- Is this the first non-backflush operation?
+               CASE WHEN NOT EXISTS (
+                   SELECT 1 FROM Erp.JobOper jo_prior
+                   WHERE jo_prior.JobNum = jo.JobNum
+                     AND jo_prior.AssemblySeq = jo.AssemblySeq
+                     AND jo_prior.OprSeq < jo.OprSeq
+                     AND jo_prior.LaborEntryMethod != 'B'
+               ) THEN 1 ELSE 0 END AS IsFirstOp
+        FROM Erp.JobHead jh
+        JOIN Erp.JobOper jo ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
+        LEFT JOIN Erp.Part p ON jh.Company = p.Company AND jh.PartNum = p.PartNum
+        WHERE ({where_clause})
+    """
+    
+    results = sql_query(query, params)
+    
+    # Build map of jobkey -> details
+    details_map = {}
+    for row in results:
+        key = f"{row['JobNum']}-{row['AssemblySeq']}-{row['OprSeq']}"
+        prod_qty = row['ProdQty'] or 0
+        qty_completed = row['QtyCompleted'] or 0
+        qty_left = prod_qty - qty_completed
+        is_first_op = row['IsFirstOp'] == 1
+        
+        # Available is dash (None) for first op, otherwise QtyFromPrior - QtyCompleted
+        if is_first_op:
+            qty_available = None
+        else:
+            qty_from_prior = row['QtyFromPrior'] or 0
+            qty_available = max(0, qty_from_prior - qty_completed)
+        
+        details_map[key] = {
+            'PartNum': row['PartNum'],
+            'PartDescription': row['PartDescription'],
+            'OpCode': row['OpCode'],
+            'ProdQty': int(prod_qty),
+            'QtyCompleted': int(qty_completed),
+            'QtyLeft': int(qty_left),
+            'QtyAvailable': int(qty_available) if qty_available is not None else None,
+            'IsFirstOp': is_first_op
+        }
+    
+    return details_map

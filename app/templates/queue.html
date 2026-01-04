@@ -172,6 +172,94 @@
 </div>
 {% endif %}
 
+<!-- Single End Modal - Full Job Details -->
+<div id="single-end-modal" class="labor-modal hidden">
+    <div class="single-end-modal-content">
+        <div class="single-end-header">
+            <h3 id="single-end-title">End Activity</h3>
+            <button class="viewpdf-btn" id="single-end-pdf-btn" style="display: none;">View PDF</button>
+            <button class="modal-close-btn" id="single-end-close">✕</button>
+        </div>
+        
+        <div class="single-end-job-info">
+            <div id="single-end-part-info"></div>
+        </div>
+        
+        <div class="single-end-qty-row" id="single-end-qty-row">
+            <!-- Qty, Done, Left, Avail, Mtl will be populated here -->
+        </div>
+        
+        <div class="single-end-columns">
+            <div class="single-end-col" id="single-end-operations"></div>
+            <div class="single-end-col" id="single-end-materials"></div>
+        </div>
+        
+        <div class="single-end-input-section">
+            <div class="labor-input-row">
+                <div class="labor-input-group">
+                    <label for="single-end-qty">Completed</label>
+                    <input type="number" id="single-end-qty" class="labor-input" min="0" step="1" value="">
+                </div>
+                <div class="labor-input-group">
+                    <label for="single-end-scrap">Scrap</label>
+                    <input type="number" id="single-end-scrap" class="labor-input" min="0" step="1" value="0">
+                </div>
+            </div>
+            <div id="single-end-error" class="labor-modal-error"></div>
+        </div>
+        
+        <div id="single-end-other-jobs" class="other-active-jobs"></div>
+        
+        <div class="labor-modal-buttons">
+            <button id="single-end-cancel" class="labor-modal-btn cancel-btn">Cancel</button>
+            <button id="single-end-submit" class="labor-modal-btn submit-btn">End Activity</button>
+        </div>
+    </div>
+</div>
+
+<!-- Mass End Modal - Quick Grid -->
+<div id="mass-end-modal" class="labor-modal hidden">
+    <div class="mass-end-modal-content">
+        <div class="mass-end-header">
+            <h3>End Activities</h3>
+            <button class="modal-close-btn" id="mass-end-close">✕</button>
+        </div>
+        
+        <div class="mass-end-controls">
+            <label><input type="checkbox" id="mass-end-select-all"> Select All</label>
+        </div>
+        
+        <div class="mass-end-table-wrapper">
+            <table class="mass-end-table">
+                <thead>
+                    <tr>
+                        <th class="col-check"></th>
+                        <th>Job</th>
+                        <th>Part</th>
+                        <th>Description</th>
+                        <th>Op</th>
+                        <th class="col-qty">Qty</th>
+                        <th class="col-qty">Left</th>
+                        <th class="col-qty">Avail</th>
+                        <th class="col-input">Complete</th>
+                        <th class="col-input">Scrap</th>
+                    </tr>
+                </thead>
+                <tbody id="mass-end-tbody">
+                    <!-- Rows populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="mass-end-error" class="labor-modal-error"></div>
+        
+        <div class="labor-modal-buttons">
+            <button id="mass-end-cancel" class="labor-modal-btn cancel-btn">Cancel</button>
+            <button id="mass-end-submit" class="labor-modal-btn submit-btn">End Selected</button>
+        </div>
+    </div>
+</div>
+
 <p class="job-count">
     Showing <span id="visible-count">{{ jobs|length }}</span> of {{ jobs|length }} job(s)
     <span id="pagination-controls" class="pagination-controls"></span>
@@ -180,6 +268,8 @@
 
 {% block scripts %}
 <script>
+console.log('TheQueue script starting...');
+
 const workcellId = "{{ workcell_id }}";
 const workcellConfig = {{ workcell_config | tojson }};
 const detailFields = workcellConfig.detail_fields || [];
@@ -917,5 +1007,638 @@ if (selectAllCheckbox) {
 
 // Initialize pagination on load
 applyFilters();
+
+// ============================================================================
+// LABOR CHECK-IN FUNCTIONALITY
+// ============================================================================
+
+// Track active labor for current employee (enriched with job details)
+let activeLaborRecords = []; // Full records from API
+let activeLabor = {}; // key: jobKey, value: record for quick lookup
+
+// Get current employee from localStorage
+function getCurrentEmployee() {
+    const stored = localStorage.getItem('thequeue_employee');
+    return stored ? JSON.parse(stored) : null;
+}
+
+// Load active labor for current employee on page load
+async function loadActiveLabor() {
+    const emp = getCurrentEmployee();
+    console.log('loadActiveLabor called, emp:', emp);
+    if (!emp) return;
+    
+    try {
+        const response = await fetch(`/api/labor/active/${emp.id}`);
+        console.log('Active labor response status:', response.status);
+        if (response.ok) {
+            activeLaborRecords = await response.json();
+            console.log('Active labor records:', activeLaborRecords);
+            activeLabor = {};
+            activeLaborRecords.forEach(rec => {
+                const key = `${rec.JobNum}-${rec.AssemblySeq}-${rec.OprSeq}`;
+                activeLabor[key] = rec;
+            });
+            console.log('activeLabor map:', activeLabor);
+            updateStartEndButtons();
+        } else {
+            console.log('Active labor response not ok:', await response.text());
+        }
+    } catch (err) {
+        console.error('Error loading active labor:', err);
+    }
+}
+
+// Update Start/End button states based on active labor
+function updateStartEndButtons() {
+    if (!currentExpandedRow) return;
+    
+    const jobKey = currentExpandedRow.dataset.jobkey;
+    const startBtn = document.getElementById('panel-start-btn');
+    const endBtn = document.getElementById('panel-end-btn');
+    
+    if (!startBtn || !endBtn) return;
+    
+    if (activeLabor[jobKey]) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Started';
+        endBtn.disabled = false;
+        endBtn.classList.add('active');
+    } else {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start';
+        endBtn.disabled = true;
+        endBtn.classList.remove('active');
+    }
+}
+
+// Start Activity
+async function startActivity() {
+    const emp = getCurrentEmployee();
+    if (!emp) {
+        alert('Please log in first');
+        return;
+    }
+    
+    if (!currentExpandedRow) return;
+    
+    const jobNum = currentExpandedRow.dataset.job;
+    const asmSeq = parseInt(currentExpandedRow.dataset.asm);
+    const oprSeq = parseInt(currentExpandedRow.dataset.opr);
+    const jobKey = currentExpandedRow.dataset.jobkey;
+    
+    const details = jobDetails[jobKey] || {};
+    const operations = details.operations || [];
+    const currentOp = operations.find(op => op.OprSeq == oprSeq) || {};
+    const resourceGrpId = currentOp.ResourceGrpID || '';
+    const resourceId = currentOp.ResourceID || '';
+    const opCode = currentOp.OpCode || '';
+    const jcDept = currentOp.JCDept || '';
+    
+    console.log('Starting activity:', { jobNum, asmSeq, oprSeq, resourceGrpId, resourceId, opCode, jcDept });
+    
+    const startBtn = document.getElementById('panel-start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting...';
+    
+    try {
+        const response = await fetch('/api/labor/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                empId: emp.id,
+                jobNum: jobNum,
+                asmSeq: asmSeq,
+                oprSeq: oprSeq,
+                resourceGrpId: resourceGrpId,
+                resourceId: resourceId,
+                opCode: opCode,
+                jcDept: jcDept
+            })
+        });
+        
+        console.log('Response status:', response.status);
+        const result = await response.json();
+        console.log('Response body:', result);
+        
+        if (result.success) {
+            // Reload active labor to get enriched data
+            await loadActiveLabor();
+            updateStartEndButtons();
+        } else {
+            console.error('Start failed:', result.error);
+            alert('Failed to start: ' + (result.error || 'Unknown error'));
+            startBtn.disabled = false;
+            startBtn.textContent = 'Start';
+        }
+    } catch (err) {
+        console.error('Start exception:', err);
+        alert('Error: ' + err.message);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start';
+    }
+}
+
+// ============================================================================
+// SINGLE END MODAL
+// ============================================================================
+
+const singleEndModal = document.getElementById('single-end-modal');
+let pendingSingleEnd = null;
+
+function showSingleEndModal() {
+    console.log('showSingleEndModal called');
+    const emp = getCurrentEmployee();
+    if (!emp) {
+        alert('Please log in first');
+        return;
+    }
+    
+    if (!currentExpandedRow) {
+        console.log('No currentExpandedRow');
+        return;
+    }
+    
+    const jobKey = currentExpandedRow.dataset.jobkey;
+    console.log('jobKey:', jobKey);
+    console.log('activeLabor:', activeLabor);
+    const labor = activeLabor[jobKey];
+    console.log('labor record:', labor);
+    
+    if (!labor) {
+        alert('No active labor on this job');
+        return;
+    }
+    
+    const jobNum = currentExpandedRow.dataset.job;
+    const asmSeq = currentExpandedRow.dataset.asm;
+    const oprSeq = currentExpandedRow.dataset.opr;
+    const partNum = currentExpandedRow.dataset.partnum;
+    const details = jobDetails[jobKey] || {};
+    const operations = details.operations || [];
+    const materials = details.materials || [];
+    
+    pendingSingleEnd = {
+        empId: emp.id,
+        laborHedSeq: labor.LaborHedSeq,
+        laborDtlSeq: labor.LaborDtlSeq,
+        jobKey: jobKey
+    };
+    
+    // Title
+    document.getElementById('single-end-title').textContent = `End Activity - Job ${jobNum}`;
+    
+    // Part info
+    const desc = currentExpandedRow.querySelector('.col-desc')?.textContent?.trim() || '';
+    document.getElementById('single-end-part-info').innerHTML = `<strong>${partNum}</strong>${desc ? ' - ' + desc : ''}`;
+    
+    // PDF button
+    const pdfBtn = document.getElementById('single-end-pdf-btn');
+    const pdfPath = details.pdfPath;
+    if (pdfPath) {
+        pdfBtn.style.display = '';
+        pdfBtn.onclick = () => window.open('/api/pdf?path=' + encodeURIComponent(pdfPath), '_blank');
+    } else {
+        pdfBtn.style.display = 'none';
+    }
+    
+    // Quantities row
+    const qtyCompleted = parseInt(currentExpandedRow.dataset.qtyCompleted) || 0;
+    const leftCell = currentExpandedRow.querySelector('td[data-value]:nth-child(7)');
+    const left = parseInt(leftCell?.dataset?.value) || 0;
+    const prodQty = left + qtyCompleted;
+    const isFirstOp = currentExpandedRow.dataset.isFirstOp === '1' || currentExpandedRow.dataset.isFirstOp === 'True';
+    const availQty = isFirstOp ? '-' : (parseInt(currentExpandedRow.dataset.qtyAvailable) || 0);
+    const mtlStatus = currentExpandedRow.dataset.mtlStatus || 'none';
+    
+    let mtlIcon = '-';
+    if (mtlStatus === 'star') mtlIcon = '<span class="mtl-star">★</span>';
+    else if (mtlStatus === 'check') mtlIcon = '<span class="mtl-check">✓</span>';
+    else if (mtlStatus === 'partial') mtlIcon = '<span class="mtl-partial">⚠</span>';
+    else if (mtlStatus === 'missing') mtlIcon = '<span class="mtl-missing">✗</span>';
+    
+    document.getElementById('single-end-qty-row').innerHTML = `
+        <div class="qty-box"><span class="qty-label">Qty</span><span class="qty-value">${prodQty}</span></div>
+        <div class="qty-box"><span class="qty-label">Done</span><span class="qty-value">${qtyCompleted}</span></div>
+        <div class="qty-box"><span class="qty-label">Left</span><span class="qty-value">${left}</span></div>
+        <div class="qty-box"><span class="qty-label">Avail</span><span class="qty-value ${typeof availQty === 'number' && availQty > 0 ? 'avail-positive' : ''}">${availQty}</span></div>
+        <div class="qty-box"><span class="qty-label">Mtl</span><span class="qty-value">${mtlIcon}</span></div>
+    `;
+    
+    // Operations table
+    let opsHtml = '';
+    if (operations.length > 0) {
+        opsHtml = `<h4>Operations</h4><table class="ops-table"><thead><tr><th>Seq</th><th>Op</th><th>Done</th><th>✓</th></tr></thead><tbody>`;
+        operations.forEach(op => {
+            const isCurrent = op.OprSeq == oprSeq;
+            opsHtml += `<tr class="${isCurrent ? 'current-op' : ''} ${op.OpComplete ? 'op-complete' : ''}">
+                <td>${op.OprSeq}</td><td>${op.OpCode}</td><td>${Math.floor(op.QtyCompleted)}</td>
+                <td><input type="checkbox" ${op.OpComplete ? 'checked' : ''} disabled></td></tr>`;
+        });
+        opsHtml += '</tbody></table>';
+    }
+    document.getElementById('single-end-operations').innerHTML = opsHtml;
+    
+    // Materials table (scrollable)
+    let mtlHtml = '';
+    if (materials.length > 0) {
+        mtlHtml = `<h4>Materials (${materials.length})</h4><table class="mtl-table"><thead><tr><th>Part</th><th>Req</th><th>On Hand</th></tr></thead><tbody>`;
+        materials.forEach(m => {
+            const onHand = m.OnHandQty || 0;
+            const required = m.RequiredQty || 0;
+            let status = onHand >= required ? 'check' : (onHand > 0 ? 'partial' : 'missing');
+            mtlHtml += `<tr class="mtl-${status}"><td>${m.PartNum}</td><td>${Math.floor(required)}</td><td>${Math.floor(onHand)}</td></tr>`;
+        });
+        mtlHtml += '</tbody></table>';
+    }
+    document.getElementById('single-end-materials').innerHTML = mtlHtml;
+    
+    // Other active jobs
+    const otherJobs = activeLaborRecords.filter(r => `${r.JobNum}-${r.AssemblySeq}-${r.OprSeq}` !== jobKey);
+    let otherHtml = '';
+    if (otherJobs.length > 0) {
+        const jobLinks = otherJobs.map(r => 
+            `<span class="other-job-link" data-jobkey="${r.JobNum}-${r.AssemblySeq}-${r.OprSeq}">${r.JobNum} (${r.OpCode || 'Op ' + r.OprSeq})</span>`
+        ).join(', ');
+        otherHtml = `<div class="other-jobs-notice">⚠ Also active: ${jobLinks}</div>`;
+    }
+    document.getElementById('single-end-other-jobs').innerHTML = otherHtml;
+    
+    // Wire up other job links to switch
+    document.querySelectorAll('.other-job-link').forEach(link => {
+        link.addEventListener('click', () => {
+            const targetKey = link.dataset.jobkey;
+            // Find and click that row if visible
+            const targetRow = document.querySelector(`.job-row[data-jobkey="${targetKey}"]`);
+            if (targetRow) {
+                hideSingleEndModal();
+                targetRow.click();
+                setTimeout(() => showSingleEndModal(), 100);
+            }
+        });
+    });
+    
+    // Reset inputs
+    document.getElementById('single-end-qty').value = '';
+    document.getElementById('single-end-scrap').value = '0';
+    document.getElementById('single-end-error').textContent = '';
+    
+    singleEndModal.classList.remove('hidden');
+    document.getElementById('single-end-qty').focus();
+}
+
+function hideSingleEndModal() {
+    singleEndModal.classList.add('hidden');
+    pendingSingleEnd = null;
+}
+
+async function submitSingleEnd() {
+    if (!pendingSingleEnd) return;
+    
+    const laborQty = parseFloat(document.getElementById('single-end-qty').value) || 0;
+    const scrapQty = parseFloat(document.getElementById('single-end-scrap').value) || 0;
+    
+    if (laborQty <= 0 && scrapQty <= 0) {
+        document.getElementById('single-end-error').textContent = 'Please enter a quantity';
+        return;
+    }
+    
+    const submitBtn = document.getElementById('single-end-submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Ending...';
+    document.getElementById('single-end-error').textContent = '';
+    
+    try {
+        const response = await fetch('/api/labor/end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                empId: pendingSingleEnd.empId,
+                laborHedSeq: pendingSingleEnd.laborHedSeq,
+                laborDtlSeq: pendingSingleEnd.laborDtlSeq,
+                laborQty: laborQty,
+                scrapQty: scrapQty
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            await loadActiveLabor();
+            hideSingleEndModal();
+            updateStartEndButtons();
+        } else {
+            document.getElementById('single-end-error').textContent = result.error;
+        }
+    } catch (err) {
+        document.getElementById('single-end-error').textContent = 'Error: ' + err.message;
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'End Activity';
+    }
+}
+
+// Single End Modal event handlers
+document.getElementById('single-end-close')?.addEventListener('click', hideSingleEndModal);
+document.getElementById('single-end-cancel')?.addEventListener('click', hideSingleEndModal);
+document.getElementById('single-end-submit')?.addEventListener('click', submitSingleEnd);
+document.getElementById('single-end-qty')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitSingleEnd();
+});
+
+// ============================================================================
+// MASS END MODAL
+// ============================================================================
+
+const massEndModal = document.getElementById('mass-end-modal');
+
+function showMassEndModal() {
+    console.log('showMassEndModal called');
+    const emp = getCurrentEmployee();
+    if (!emp) {
+        alert('Please log in first');
+        return;
+    }
+    
+    console.log('activeLaborRecords:', activeLaborRecords);
+    
+    if (activeLaborRecords.length === 0) {
+        alert('No active jobs to end');
+        return;
+    }
+    
+    // Build table rows
+    const tbody = document.getElementById('mass-end-tbody');
+    tbody.innerHTML = activeLaborRecords.map(rec => {
+        const key = `${rec.JobNum}-${rec.AssemblySeq}-${rec.OprSeq}`;
+        const availDisplay = rec.QtyAvailable === null ? '-' : rec.QtyAvailable;
+        return `
+            <tr data-labor-key="${key}" data-hed="${rec.LaborHedSeq}" data-dtl="${rec.LaborDtlSeq}">
+                <td><input type="checkbox" class="mass-end-check" checked></td>
+                <td>${rec.JobNum}</td>
+                <td>${rec.PartNum || ''}</td>
+                <td>${rec.PartDescription || ''}</td>
+                <td>${rec.OprSeq}-${rec.OpCode || ''}</td>
+                <td class="col-qty">${rec.ProdQty || 0}</td>
+                <td class="col-qty">${rec.QtyLeft || 0}</td>
+                <td class="col-qty">${availDisplay}</td>
+                <td class="col-input"><input type="number" class="mass-end-qty" min="0" step="1" value=""></td>
+                <td class="col-input"><input type="number" class="mass-end-scrap" min="0" step="1" value="0"></td>
+            </tr>
+        `;
+    }).join('');
+    
+    document.getElementById('mass-end-select-all').checked = true;
+    document.getElementById('mass-end-error').textContent = '';
+    
+    massEndModal.classList.remove('hidden');
+}
+
+function hideMassEndModal() {
+    massEndModal.classList.add('hidden');
+}
+
+async function submitMassEnd() {
+    const emp = getCurrentEmployee();
+    if (!emp) return;
+    
+    const rows = document.querySelectorAll('#mass-end-tbody tr');
+    const toEnd = [];
+    
+    rows.forEach(row => {
+        const checked = row.querySelector('.mass-end-check').checked;
+        if (!checked) return;
+        
+        const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
+        const scrap = parseFloat(row.querySelector('.mass-end-scrap').value) || 0;
+        
+        if (qty > 0 || scrap > 0) {
+            toEnd.push({
+                laborHedSeq: parseInt(row.dataset.hed),
+                laborDtlSeq: parseInt(row.dataset.dtl),
+                laborQty: qty,
+                scrapQty: scrap
+            });
+        }
+    });
+    
+    if (toEnd.length === 0) {
+        document.getElementById('mass-end-error').textContent = 'Enter quantities for at least one job';
+        return;
+    }
+    
+    const submitBtn = document.getElementById('mass-end-submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = `Ending ${toEnd.length}...`;
+    document.getElementById('mass-end-error').textContent = '';
+    
+    let success = 0;
+    let failed = 0;
+    
+    for (const item of toEnd) {
+        try {
+            const response = await fetch('/api/labor/end', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    empId: emp.id,
+                    laborHedSeq: item.laborHedSeq,
+                    laborDtlSeq: item.laborDtlSeq,
+                    laborQty: item.laborQty,
+                    scrapQty: item.scrapQty
+                })
+            });
+            const result = await response.json();
+            if (result.success) success++;
+            else failed++;
+        } catch (err) {
+            failed++;
+        }
+    }
+    
+    await loadActiveLabor();
+    
+    if (failed === 0) {
+        hideMassEndModal();
+        updateStartEndButtons();
+    } else {
+        document.getElementById('mass-end-error').textContent = `Ended ${success}, failed ${failed}`;
+        // Refresh the table
+        showMassEndModal();
+    }
+    
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'End Selected';
+}
+
+// Mass End Modal event handlers
+document.getElementById('mass-end-close')?.addEventListener('click', hideMassEndModal);
+document.getElementById('mass-end-cancel')?.addEventListener('click', hideMassEndModal);
+document.getElementById('mass-end-submit')?.addEventListener('click', submitMassEnd);
+document.getElementById('mass-end-select-all')?.addEventListener('change', (e) => {
+    document.querySelectorAll('.mass-end-check').forEach(cb => cb.checked = e.target.checked);
+});
+
+// ============================================================================
+// MASS START
+// ============================================================================
+
+async function massStart() {
+    const emp = getCurrentEmployee();
+    if (!emp) {
+        alert('Please log in first');
+        return;
+    }
+    
+    // Get selected rows
+    const selectedRows = Array.from(document.querySelectorAll('.job-row')).filter(row => 
+        row.style.display !== 'none' && row.querySelector('.row-select').checked
+    );
+    
+    if (selectedRows.length === 0) {
+        alert('Please select jobs to start');
+        return;
+    }
+    
+    const massStartBtn = document.querySelector('.mass-actions .start-btn');
+    massStartBtn.disabled = true;
+    massStartBtn.textContent = `Starting ${selectedRows.length}...`;
+    
+    let success = 0;
+    let failed = 0;
+    let lastError = '';
+    
+    for (const row of selectedRows) {
+        const jobKey = row.dataset.jobkey;
+        
+        // Skip if already active
+        if (activeLabor[jobKey]) {
+            continue;
+        }
+        
+        const jobNum = row.dataset.job;
+        const asmSeq = parseInt(row.dataset.asm);
+        const oprSeq = parseInt(row.dataset.opr);
+        
+        const details = jobDetails[jobKey] || {};
+        const operations = details.operations || [];
+        const currentOp = operations.find(op => op.OprSeq == oprSeq) || {};
+        
+        console.log('Mass starting:', jobNum, { resourceGrpId: currentOp.ResourceGrpID, resourceId: currentOp.ResourceID, opCode: currentOp.OpCode, jcDept: currentOp.JCDept });
+        
+        try {
+            const response = await fetch('/api/labor/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    empId: emp.id,
+                    jobNum: jobNum,
+                    asmSeq: asmSeq,
+                    oprSeq: oprSeq,
+                    resourceGrpId: currentOp.ResourceGrpID || '',
+                    resourceId: currentOp.ResourceID || '',
+                    opCode: currentOp.OpCode || '',
+                    jcDept: currentOp.JCDept || ''
+                })
+            });
+            const result = await response.json();
+            console.log('Mass start result for', jobNum, ':', result);
+            if (result.success) {
+                success++;
+            } else {
+                failed++;
+                lastError = result.error || 'Unknown error';
+                console.error('Mass start failed for', jobNum, ':', result.error);
+            }
+        } catch (err) {
+            failed++;
+            lastError = err.message;
+            console.error('Mass start exception for', jobNum, ':', err);
+        }
+    }
+    
+    await loadActiveLabor();
+    updateStartEndButtons();
+    
+    // Uncheck all
+    document.querySelectorAll('.row-select').forEach(cb => cb.checked = false);
+    document.getElementById('select-all').checked = false;
+    
+    massStartBtn.disabled = false;
+    massStartBtn.textContent = 'Mass Start';
+    
+    if (failed > 0) {
+        alert(`Started ${success} jobs, ${failed} failed.\nLast error: ${lastError}`);
+    } else if (success > 0) {
+        console.log(`Successfully started ${success} jobs`);
+    }
+}
+
+// ============================================================================
+// WIRE UP BUTTONS
+// ============================================================================
+
+console.log('Wiring up labor buttons...');
+
+const panelStartBtn = document.getElementById('panel-start-btn');
+const panelEndBtn = document.getElementById('panel-end-btn');
+
+console.log('panelStartBtn:', panelStartBtn);
+console.log('panelEndBtn:', panelEndBtn);
+
+if (panelStartBtn) {
+    panelStartBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log('Start button clicked');
+        startActivity();
+    });
+}
+
+if (panelEndBtn) {
+    panelEndBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log('End button clicked');
+        showSingleEndModal();
+    });
+}
+
+// Mass action buttons
+const massStartBtn = document.querySelector('.mass-actions .start-btn');
+const massEndBtn = document.querySelector('.mass-actions .end-btn');
+
+console.log('massStartBtn:', massStartBtn);
+console.log('massEndBtn:', massEndBtn);
+
+if (massStartBtn) {
+    massStartBtn.addEventListener('click', () => {
+        console.log('Mass Start button clicked');
+        massStart();
+    });
+}
+
+if (massEndBtn) {
+    massEndBtn.addEventListener('click', () => {
+        console.log('Mass End button clicked');
+        showMassEndModal();
+    });
+}
+
+// Close modals on escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        if (!singleEndModal.classList.contains('hidden')) hideSingleEndModal();
+        if (!massEndModal.classList.contains('hidden')) hideMassEndModal();
+    }
+});
+
+// Load active labor on page load
+loadActiveLabor();
+
+// Update buttons when a row is expanded
+const originalLoadJobDetails = loadJobDetails;
+loadJobDetails = function(...args) {
+    originalLoadJobDetails(...args);
+    setTimeout(updateStartEndButtons, 100);
+};
 </script>
 {% endblock %}

@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 
 # Connection String for EPIC10LIVE using Windows Authentication
 CONN_STR = (
-    "mssql+pyodbc://@SQL1.CORP.JD2.COM/EPIC10LIVE"
+    "mssql+pyodbc://@SQL1.CORP.JD2.COM/EPIC102700TEST"
     "?driver=ODBC+Driver+18+for+SQL+Server"
     "&trusted_connection=yes&TrustServerCertificate=yes"
 )
@@ -17,6 +17,12 @@ CONN_STR = (
 # PDF path translation (Epicor stores UNC paths, we need local paths)
 PDF_UNC_PREFIX = os.getenv('PDF_UNC_PREFIX', r'\\JAIMEE-EF\EPICOR\Part Attachments')
 PDF_LOCAL_PREFIX = os.getenv('PDF_LOCAL_PREFIX', r'C:\EPICOR\Part Attachments')
+
+# Epicor REST API
+EPICOR_API_URL = os.getenv('EPICOR_API_URL', '')
+EPICOR_API_KEY = os.getenv('EPICOR_API_KEY', '')
+EPICOR_USERNAME = os.getenv('EPICOR_USERNAME', '')
+EPICOR_PASSWORD = os.getenv('EPICOR_PASSWORD', '')
 
 _engine = None
 

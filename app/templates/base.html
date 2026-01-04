@@ -8,8 +8,24 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <!-- Login Overlay - blocks page until employee logs in -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <h2>The Queue</h2>
+            <p>Enter your employee number to continue</p>
+            <input type="text" id="login-emp-id" class="login-input" placeholder="Employee #" maxlength="3" autocomplete="off" inputmode="numeric">
+            <div id="login-error" class="login-error"></div>
+        </div>
+    </div>
+
     <header class="header">
-        <h1>The Queue</h1>
+        <div class="header-left">
+            <h1>The Queue</h1>
+        </div>
+        <div class="header-employee">
+            <span id="employee-name" class="employee-name"></span>
+            <a href="#" id="switch-employee" class="switch-link">Not you?</a>
+        </div>
         <nav class="header-nav">
             {% if workcells %}
             <select class="dept-selector" onchange="if(this.value) window.location.href=this.value">
@@ -29,6 +45,97 @@
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+    
+    <script>
+    // Employee login management
+    const loginOverlay = document.getElementById('login-overlay');
+    const loginInput = document.getElementById('login-emp-id');
+    const loginError = document.getElementById('login-error');
+    const employeeNameDisplay = document.getElementById('employee-name');
+    const switchLink = document.getElementById('switch-employee');
+    
+    function getStoredEmployee() {
+        const stored = localStorage.getItem('thequeue_employee');
+        return stored ? JSON.parse(stored) : null;
+    }
+    
+    function setStoredEmployee(empId, name) {
+        localStorage.setItem('thequeue_employee', JSON.stringify({id: empId, name: name}));
+    }
+    
+    function clearStoredEmployee() {
+        localStorage.removeItem('thequeue_employee');
+    }
+    
+    function showLogin() {
+        loginOverlay.style.display = 'flex';
+        loginInput.value = '';
+        loginError.textContent = '';
+        loginInput.focus();
+    }
+    
+    function hideLogin() {
+        loginOverlay.style.display = 'none';
+    }
+    
+    function updateEmployeeDisplay(name) {
+        employeeNameDisplay.textContent = name;
+    }
+    
+    async function validateEmployee(empId) {
+        try {
+            const response = await fetch(`/api/employee/${empId}`);
+            if (response.ok) {
+                return await response.json();
+            }
+            return null;
+        } catch (err) {
+            console.error('Error validating employee:', err);
+            return null;
+        }
+    }
+    
+    // Check on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const employee = getStoredEmployee();
+        if (employee) {
+            updateEmployeeDisplay(employee.name);
+            hideLogin();
+        } else {
+            showLogin();
+        }
+    });
+    
+    // Handle login input
+    loginInput.addEventListener('keypress', async function(e) {
+        if (e.key === 'Enter') {
+            const empId = loginInput.value.trim();
+            if (!empId) {
+                loginError.textContent = 'Please enter your employee number';
+                return;
+            }
+            
+            loginError.textContent = 'Checking...';
+            const employee = await validateEmployee(empId);
+            
+            if (employee) {
+                setStoredEmployee(employee.EmpID, employee.Name);
+                updateEmployeeDisplay(employee.Name);
+                hideLogin();
+            } else {
+                loginError.textContent = 'Employee not found';
+                loginInput.select();
+            }
+        }
+    });
+    
+    // Handle switch employee
+    switchLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        clearStoredEmployee();
+        showLogin();
+    });
+    </script>
     
     {% block scripts %}{% endblock %}
 </body>
