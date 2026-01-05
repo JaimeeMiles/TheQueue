@@ -106,12 +106,63 @@ body {
     font-weight: 700;
 }
 
+/* Work Cell Groups */
+.groups-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.groups-container .workcell-group:nth-child(even) {
+    text-align: right;
+}
+
+.groups-container .workcell-group:nth-child(even) .workcell-grid {
+    justify-content: flex-end;
+}
+
+.groups-container .workcell-group:nth-child(even) .group-title {
+    text-align: right;
+}
+
+@media (max-width: 900px) {
+    .groups-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .groups-container .workcell-group:nth-child(even) {
+        text-align: left;
+    }
+    
+    .groups-container .workcell-group:nth-child(even) .workcell-grid {
+        justify-content: flex-start;
+    }
+    
+    .groups-container .workcell-group:nth-child(even) .group-title {
+        text-align: left;
+    }
+}
+
+.workcell-group {
+    margin-bottom: 1.5rem;
+}
+
+.group-title {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
 /* Work Cell Selection Grid */
 .workcell-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
-    margin-top: 2rem;
 }
 
 .workcell-btn {
@@ -126,6 +177,7 @@ body {
     color: var(--text-primary);
     font-size: 1rem;
     font-weight: 600;
+    min-width: 160px;
 }
 
 .workcell-btn:hover {
@@ -293,6 +345,37 @@ body {
 
 .material-select:focus,
 .color-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.resource-filter,
+.capability-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.resource-select,
+.capability-select {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: var(--bg-elevated);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    min-width: 200px;
+}
+
+.resource-select:hover,
+.capability-select:hover {
+    border-color: var(--border-light);
+}
+
+.resource-select:focus,
+.capability-select:focus {
     outline: none;
     border-color: var(--accent);
 }
@@ -1483,7 +1566,7 @@ body {
     border-radius: 12px;
     padding: 1.5rem;
     width: 95%;
-    max-width: 1250px;
+    max-width: 1300px;
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -1507,15 +1590,79 @@ body {
 
 .mass-end-controls {
     margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
 }
 
-.mass-end-controls label {
+.mass-end-controls > label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     cursor: pointer;
     font-weight: 500;
     color: var(--text-primary);
+}
+
+.quick-fill-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.quick-fill-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.quick-fill-btn {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.quick-fill-btn:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.quick-fill-btn:active {
+    transform: scale(0.95);
+}
+
+.quick-fill-divider {
+    color: var(--text-muted);
+    margin: 0 0.25rem;
+}
+
+.quick-fill-input {
+    width: 60px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-align: center;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.quick-fill-input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.quick-fill-input::placeholder {
+    color: var(--text-muted);
 }
 
 .mass-end-table-wrapper {
@@ -1609,4 +1756,64 @@ body {
 
 .mass-end-modal-content .labor-modal-btn.cancel-btn:hover {
     background: var(--bg-hover);
+}
+
+/* ============================================================================
+   WARNING BANNER & CHECKBOX STYLES
+   ============================================================================ */
+
+.qty-warning {
+    background: #78350f;
+    border: 2px solid #f59e0b;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 0;
+    color: #fef3c7;
+    font-size: 0.95rem;
+}
+
+.qty-warning strong {
+    color: #fbbf24;
+}
+
+.first-op-options {
+    padding: 0.75rem 1rem;
+    background: var(--bg-elevated);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.mass-end-table .col-done {
+    width: 50px;
+    text-align: center;
+}
+
+.mass-end-table .col-done input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--status-ready);
+    cursor: pointer;
 }

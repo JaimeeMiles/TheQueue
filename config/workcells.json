@@ -7,7 +7,8 @@
       "detail_fields": ["qty", "done", "left", "nextlocation", "ophours", "cycle", "last_checkin"],
       "material_limit": null,
       "group_by_material": true,
-      "show_viewpdf": true
+      "show_viewpdf": true,
+      "skip_resource_id": true
     },
     "PRESS": {
       "name": "Press",
@@ -20,6 +21,7 @@
     "BURN": {
       "name": "Burn",
       "ops": ["BURN"],
+      "dashboard_type": "burn",
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
       "material_limit": null,
@@ -72,7 +74,9 @@
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "preptime", "machload", "machrun", "machunload", "machprogram", "last_checkin"],
       "material_limit": null,
-      "show_viewpdf": true
+      "show_viewpdf": true,
+      "filter_by_resource": true,
+      "filter_by_capability": true
     },
     "POWDER": {
       "name": "Powder Coat",
@@ -144,6 +148,14 @@
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
       "material_limit": null
+    },
+    "INSERTS": {
+      "name": "Inserts",
+      "ops": [],
+      "dashboard_type": "inserts",
+      "columns": [],
+      "detail_fields": [],
+      "show_mass_actions": false
     }
   }
 }

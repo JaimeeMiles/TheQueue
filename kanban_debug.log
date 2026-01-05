@@ -1,0 +1,585 @@
+[kanban_receipt] Starting: Part=310159, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 310159
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: ''
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Bar'
+  PartNum: '310159'
+  PartNumDisp: '310159'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Process failed: 500
+[kanban_receipt] Process error response: Sorry! Something went wrong. Please contact your system administrator. Correlation Id: a7d7f11f-bcec-4207-972f-f2e5f0cc8ab3
+[kanban_receipt] Starting: Part=310159, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 310159
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: ''
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Bar'
+  PartNum: '310159'
+  PartNumDisp: '310159'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Process failed: 500
+[kanban_receipt] Process error response: Sorry! Something went wrong. Please contact your system administrator. Correlation Id: 3c19a98f-0d92-4326-a985-a293e0d40049
+[kanban_receipt] Starting: Part=310159, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 310159
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Bar'
+  PartNum: '310159'
+  PartNumDisp: '310159'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '310159', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 1.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Ba
+[kanban_receipt] Starting: Part=310159, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 310159
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Bar'
+  PartNum: '310159'
+  PartNumDisp: '310159'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '310159', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 1.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Ba
+[kanban_receipt] Starting: Part=310159, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 310159
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Bar'
+  PartNum: '310159'
+  PartNumDisp: '310159'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '310159', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 1.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'M3432 - Die Billet Ungrooved - 1.55" Faced Thick 4.5" Dia Ba
+[kanban_receipt] Starting: Part=303879, Qty=12, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 303879
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=12, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'PD Inserts Gen 3 - .5"'
+  PartNum: '303879'
+  PartNumDisp: '303879'
+  Quantity: 12.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '303879', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 12.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'PD Inserts Gen 3 - .5"', 'ScrapReasonDesc': '', 'NonConfRea
+[kanban_receipt] Starting: Part=303884, Qty=5, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 303884
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=5, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'PD Inserts Gen 3 - 1"'
+  PartNum: '303884'
+  PartNumDisp: '303884'
+  Quantity: 5.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '303884', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 5.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'PD Inserts Gen 3 - 1"', 'ScrapReasonDesc': '', 'NonConfReaso
+[kanban_receipt] Starting: Part=100155, Qty=1, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 100155
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=1, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin warning: 400
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'FG Final'
+  BinNum: ''
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'Model 3 Bender'
+  PartNum: '100155'
+  PartNumDisp: '100155'
+  Quantity: 1.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '100155', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 1.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': '', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'Model 3 Bender', 'ScrapReasonDesc': '', 'NonConfReasonDesc': '', 
+[kanban_receipt] Starting: Part=302002, Qty=4, Emp=49
+[kanban_receipt] KanbanReceiptsGetNew response keys: dict_keys(['returnObj'])
+[kanban_receipt] Dataset keys: dict_keys(['KanbanReceipts', 'LegalNumGenOpts', 'LotPartBin', 'LotPartMtl', 'PartLotAttributes', 'SelectedSerialNumbers', 'SNFormat', 'ExtensionTables'])
+[kanban_receipt] KanbanReceipts records: 1
+[kanban_receipt] Set PartNum to 302002
+[kanban_receipt] ChangePart successful
+[kanban_receipt] Set Qty=4, Warehouse=PROD, Bin=PR-01, EmployeeID=49
+[kanban_receipt] ChangeWarehouse successful
+[kanban_receipt] ChangeBin successful
+[kanban_receipt] PreProcess response keys: dict_keys(['parameters'])
+[kanban_receipt] PreProcess successful
+[kanban_receipt] ALL fields before Process:
+  AltMethod: ''
+  BaseUOM: 'EA'
+  BinDescription: 'Production Floor - WIP'
+  BinNum: 'PR-01'
+  CanReportNCQty: False
+  CanReportScrapQty: False
+  Company: 'JD2'
+  ContractID: ''
+  DimCode: ''
+  DimCodeDescription: ''
+  DisableAltMethod: True
+  EmployeeID: '49'
+  EmployeeName: ''
+  InventoryUM: 'EA'
+  InventoryUMDisp: 'EA'
+  JobAlreadyCreated: False
+  JobDate: '2026-01-04T00:00:00-05:00'
+  JobEngineered: True
+  JobFirm: True
+  JobNum: ''
+  JobReleased: True
+  LegalNumber: ''
+  LegalNumberNonConf: ''
+  LotNum: ''
+  LotNumDescription: ''
+  NonConfQuantity: 0.0
+  NonConfReason: ''
+  NonConfReasonDesc: ''
+  PartDescription: 'Model 32 Pedestal'
+  PartNum: '302002'
+  PartNumDisp: '302002'
+  Quantity: 4.0
+  RevisionNum: 'RMX2022.01'
+  RowMod: 'U'
+  SNQuantity: 0.0
+  ScrapQuantity: 0.0
+  ScrapReason: ''
+  ScrapReasonDesc: ''
+  SerialNoTempTranID: 0
+  SysRowID: '00000000-0000-0000-0000-000000000000'
+  TotalReqQty: 0.0
+  TrackDimension: False
+  TrackLots: False
+  TrackSerialNum: False
+  TranDocTypeID: 'WIPSTOCK'
+  TranDocTypeIDNonConf: 'NONCONF'
+  TranDocTypeIDStockWIP: 'STKTOWIP'
+  UseJobNumForLot: False
+  ValidateOK: False
+  WarehouseCode: 'PROD'
+  WarehouseDescription: 'Production'
+[kanban_receipt] Set ValidateOK = True
+[kanban_receipt] ProcessKanbanReceipts successful: {'parameters': {'ds': {'KanbanReceipts': [{'Company': 'JD2', 'EmployeeID': '49', 'PartNum': '302002', 'RevisionNum': 'RMX2022.01', 'LotNum': '', 'Quantity': 4.0, 'JobDate': '2026-01-04T00:00:00-05:00', 'ScrapQuantity': 0.0, 'ScrapReason': '', 'NonConfQuantity': 0.0, 'NonConfReason': '', 'DimCode': '', 'WarehouseCode': 'PROD', 'BinNum': 'PR-01', 'CanReportScrapQty': False, 'CanReportNCQty': False, 'EmployeeName': '', 'PartDescription': 'Model 32 Pedestal', 'ScrapReasonDesc': '', 'NonConfReasonDes

@@ -1,0 +1,654 @@
+{% extends "base.html" %}
+
+{% block title %}The Queue - Burn Dashboard{% endblock %}
+
+{% block content %}
+<style>
+/* ============================================
+   BURN DASHBOARD - CLEAN DARK MODE
+   ============================================ */
+
+.container {
+    background: #121212;
+    min-height: 100vh;
+}
+
+.queue-header {
+    background: #1e1e1e !important;
+    border-bottom: 1px solid #333 !important;
+}
+
+.queue-header h2 {
+    color: #f0f0f0 !important;
+}
+
+.queue-header .back-btn {
+    color: #90caf9 !important;
+}
+
+.queue-header .refresh-btn {
+    background: #333 !important;
+    color: #f0f0f0 !important;
+    border: 1px solid #444 !important;
+}
+
+/* Filter row */
+.burn-filter-row {
+    padding: 14px 20px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.burn-filter-row label {
+    color: #bbb;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.burn-select {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    background: #2a2a2a;
+    color: #f0f0f0;
+    border: 1px solid #444;
+    border-radius: 4px;
+    min-width: 150px;
+    cursor: pointer;
+}
+
+.burn-select:focus {
+    outline: none;
+    border-color: #666;
+}
+
+.burn-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.burn-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.burn-toggle label {
+    cursor: pointer;
+}
+
+/* Dashboard container */
+.burn-dashboard {
+    background: #121212;
+}
+
+/* Table */
+.burn-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.burn-table th {
+    background: #2a2a2a;
+    color: #999;
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+}
+
+.burn-table th.col-desc {
+    text-align: left;
+}
+
+.burn-table td {
+    padding: 12px 8px;
+    color: #e8e8e8;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 0.9rem;
+}
+
+/* Group dividers - vertical bars */
+.burn-table th.group-start,
+.burn-table td.group-start {
+    border-left: 2px solid #555;
+}
+
+/* Normal rows */
+.burn-table tbody tr {
+    background: #1a1a1a;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.burn-table tbody tr:hover {
+    background: #252525;
+}
+
+/* Late shortage rows - medium gray */
+.burn-table tbody tr.late-shortage {
+    background: #3a3a3a;
+}
+
+.burn-table tbody tr.late-shortage:hover {
+    background: #444;
+}
+
+.burn-table tbody tr.hidden {
+    display: none;
+}
+
+/* Column styles */
+.col-size {
+    width: 110px;
+    min-width: 110px;
+    text-align: center;
+    color: #80cbc4;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.col-part {
+    width: 140px;
+    text-align: center;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 0.85rem;
+}
+
+.col-desc {
+    text-align: left;
+    color: #ccc;
+}
+
+.col-num {
+    width: 55px;
+    min-width: 45px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Totals row */
+.burn-table tfoot tr {
+    background: #2a2a2a;
+}
+
+.burn-table tfoot td {
+    border-top: 2px solid #444;
+    padding: 12px 8px;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Count */
+.burn-count {
+    padding: 12px 20px;
+    background: #1e1e1e;
+    color: #777;
+    font-size: 0.85rem;
+    margin: 0;
+    border-top: 1px solid #333;
+}
+
+.no-data {
+    padding: 60px 20px;
+    text-align: center;
+    color: #666;
+    font-size: 1rem;
+    background: #121212;
+}
+
+/* ============================================
+   MODAL - DARK
+   ============================================ */
+
+.burn-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.burn-modal-content {
+    background: #1e1e1e;
+    margin: 10% auto;
+    border-radius: 8px;
+    width: 380px;
+    max-width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    border: 1px solid #333;
+}
+
+.burn-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #333;
+}
+
+.burn-modal-header h3 {
+    margin: 0;
+    color: #f0f0f0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.burn-modal-close {
+    font-size: 22px;
+    color: #666;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.burn-modal-close:hover {
+    color: #fff;
+}
+
+.burn-modal-body {
+    padding: 20px;
+}
+
+.burn-form-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.burn-form-row label {
+    width: 90px;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.burn-form-row span {
+    color: #e8e8e8;
+    font-size: 0.95rem;
+}
+
+#kanban-qty {
+    padding: 10px 12px;
+    font-size: 1.1rem;
+    background: #2a2a2a;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 4px;
+    width: 100px;
+    text-align: center;
+}
+
+#kanban-qty:focus {
+    outline: none;
+    border-color: #666;
+}
+
+.burn-message {
+    padding: 10px 12px;
+    border-radius: 4px;
+    text-align: center;
+    margin-top: 12px;
+    font-size: 0.9rem;
+    display: none;
+}
+
+.burn-message.success {
+    display: block;
+    background: #1b4332;
+    color: #95d5b2;
+}
+
+.burn-message.error {
+    display: block;
+    background: #442222;
+    color: #f0a0a0;
+}
+
+.burn-message.processing {
+    display: block;
+    background: #1e3a5f;
+    color: #90caf9;
+}
+
+.burn-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid #333;
+}
+
+.burn-btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.burn-btn-cancel {
+    background: #333;
+    color: #ccc;
+}
+
+.burn-btn-cancel:hover {
+    background: #444;
+}
+
+.burn-btn-submit {
+    background: #2e7d32;
+    color: #fff;
+}
+
+.burn-btn-submit:hover {
+    background: #388e3c;
+}
+
+.burn-btn-submit:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+}
+</style>
+
+<div class="queue-header">
+    <div class="queue-title-row">
+        <a href="{{ url_for('views.index') }}" class="back-btn">← Back</a>
+        <h2>Burn - Billet Dashboard</h2>
+    </div>
+    <button onclick="location.reload()" class="refresh-btn">🔄 Refresh</button>
+</div>
+
+{% if billets %}
+<div class="burn-filter-row">
+    <label>Size:</label>
+    <select id="size-select" class="burn-select">
+        <option value="all">All Sizes</option>
+    </select>
+    
+    <div class="burn-toggle">
+        <input type="checkbox" id="hide-no-shortage">
+        <label for="hide-no-shortage">Hide if no shortage</label>
+    </div>
+</div>
+{% endif %}
+
+<div id="billet-dashboard" class="burn-dashboard">
+    {% if billets %}
+    <table class="burn-table" id="billet-table">
+        <thead>
+            <tr>
+                <th class="col-size">Size</th>
+                <th class="col-part">Billet</th>
+                <th class="col-desc">Description</th>
+                <th class="col-num group-start">Demand</th>
+                <th class="col-num">On Hand</th>
+                <th class="col-num">Short</th>
+                <th class="col-num group-start">Late</th>
+                <th class="col-num">Short</th>
+                <th class="col-num group-start">Future</th>
+                <th class="col-num">Short</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for billet in billets %}
+            <tr class="billet-row{% if billet.ShortLate > 0 %} late-shortage{% endif %}" 
+                data-partnum="{{ billet.PartNum }}"
+                data-description="{{ billet.PartDescription or '' }}"
+                data-size=""
+                data-shortage="{{ billet.Shortage or 0 }}">
+                <td class="col-size"></td>
+                <td class="col-part">{{ billet.PartNum }}</td>
+                <td class="col-desc">{{ billet.PartDescription or '-' }}</td>
+                <td class="col-num group-start">{{ (billet.TotalDemand or 0)|int }}</td>
+                <td class="col-num">{{ (billet.OnHand or 0)|int }}</td>
+                <td class="col-num">{{ (billet.Shortage or 0)|int if billet.Shortage > 0 else '-' }}</td>
+                <td class="col-num group-start">{{ (billet.LateNeed or 0)|int }}</td>
+                <td class="col-num">{{ (billet.ShortLate or 0)|int if billet.ShortLate > 0 else '-' }}</td>
+                <td class="col-num group-start">{{ (billet.FutureNeed or 0)|int }}</td>
+                <td class="col-num">{{ (billet.ShortFuture or 0)|int if billet.ShortFuture > 0 else '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td class="col-size"><strong>TOTAL</strong></td>
+                <td class="col-part"></td>
+                <td class="col-desc"></td>
+                <td class="col-num group-start"><strong id="total-demand">0</strong></td>
+                <td class="col-num"><strong id="total-onhand">0</strong></td>
+                <td class="col-num"><strong id="total-shortage">-</strong></td>
+                <td class="col-num group-start"><strong id="total-late">0</strong></td>
+                <td class="col-num"><strong id="total-short-late">-</strong></td>
+                <td class="col-num group-start"><strong id="total-future">0</strong></td>
+                <td class="col-num"><strong id="total-short-future">-</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <div class="no-data">No billet demand found.</div>
+    {% endif %}
+</div>
+
+<div id="kanban-modal" class="burn-modal">
+    <div class="burn-modal-content">
+        <div class="burn-modal-header">
+            <h3>Kanban Receipt</h3>
+            <span class="burn-modal-close">&times;</span>
+        </div>
+        <div class="burn-modal-body">
+            <div class="burn-form-row">
+                <label>Part:</label>
+                <span id="kanban-partnum"></span>
+            </div>
+            <div class="burn-form-row">
+                <label>Desc:</label>
+                <span id="kanban-description"></span>
+            </div>
+            <div class="burn-form-row">
+                <label>Quantity:</label>
+                <input type="number" id="kanban-qty" min="1" value="1" autocomplete="off">
+            </div>
+            <div class="burn-form-row" id="kanban-last-row" style="display: none;">
+                <label>Last:</label>
+                <span id="kanban-last" style="color: #f0a0a0; font-size: 0.85rem;"></span>
+            </div>
+            <div id="kanban-message" class="burn-message"></div>
+        </div>
+        <div class="burn-modal-footer">
+            <button id="kanban-cancel" class="burn-btn burn-btn-cancel">Cancel</button>
+            <button id="kanban-submit" class="burn-btn burn-btn-submit">Submit</button>
+        </div>
+    </div>
+</div>
+
+<p class="burn-count">
+    Showing <span id="visible-count">{{ billets|length }}</span> of {{ billets|length }} billet(s)
+</p>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function getStoredEmployee() {
+        const stored = localStorage.getItem('thequeue_employee');
+        return stored ? JSON.parse(stored) : null;
+    }
+    
+    function extractSize(description) {
+        if (!description) return '';
+        const match = description.match(/-\s*([\d.]+"\s*(?:Faced)?)\s*Thick/i);
+        return match ? match[1].trim() : '';
+    }
+    
+    const sizes = new Set();
+    document.querySelectorAll('.billet-row').forEach(row => {
+        const size = extractSize(row.dataset.description);
+        row.dataset.size = size;
+        row.querySelector('.col-size').textContent = size || '-';
+        if (size) sizes.add(size);
+    });
+    
+    const sizeSelect = document.getElementById('size-select');
+    const hideNoShortage = document.getElementById('hide-no-shortage');
+    
+    if (sizeSelect) {
+        Array.from(sizes).sort((a, b) => parseFloat(a) - parseFloat(b)).forEach(size => {
+            const opt = document.createElement('option');
+            opt.value = size;
+            opt.textContent = size;
+            sizeSelect.appendChild(opt);
+        });
+        sizeSelect.addEventListener('change', applyFilter);
+    }
+    
+    if (hideNoShortage) {
+        hideNoShortage.addEventListener('change', applyFilter);
+    }
+    
+    function updateTotals() {
+        let demand = 0, onhand = 0, shortage = 0, late = 0, shortLate = 0, future = 0, shortFuture = 0;
+        document.querySelectorAll('.billet-row:not(.hidden)').forEach(row => {
+            const cells = row.querySelectorAll('.col-num');
+            demand += parseInt(cells[0].textContent) || 0;
+            onhand += parseInt(cells[1].textContent) || 0;
+            const s = cells[2].textContent.trim();
+            shortage += (s === '-' ? 0 : parseInt(s)) || 0;
+            late += parseInt(cells[3].textContent) || 0;
+            const sl = cells[4].textContent.trim();
+            shortLate += (sl === '-' ? 0 : parseInt(sl)) || 0;
+            future += parseInt(cells[5].textContent) || 0;
+            const sf = cells[6].textContent.trim();
+            shortFuture += (sf === '-' ? 0 : parseInt(sf)) || 0;
+        });
+        document.getElementById('total-demand').textContent = demand;
+        document.getElementById('total-onhand').textContent = onhand;
+        document.getElementById('total-shortage').textContent = shortage || '-';
+        document.getElementById('total-late').textContent = late;
+        document.getElementById('total-short-late').textContent = shortLate || '-';
+        document.getElementById('total-future').textContent = future;
+        document.getElementById('total-short-future').textContent = shortFuture || '-';
+    }
+    
+    function applyFilter() {
+        const selectedSize = sizeSelect ? sizeSelect.value : 'all';
+        const hideZeroShortage = hideNoShortage ? hideNoShortage.checked : false;
+        let count = 0;
+        
+        document.querySelectorAll('.billet-row').forEach(row => {
+            const sizeMatch = selectedSize === 'all' || row.dataset.size === selectedSize;
+            const shortageVal = parseInt(row.dataset.shortage) || 0;
+            const shortageMatch = !hideZeroShortage || shortageVal > 0;
+            
+            const show = sizeMatch && shortageMatch;
+            row.classList.toggle('hidden', !show);
+            if (show) count++;
+        });
+        
+        document.getElementById('visible-count').textContent = count;
+        updateTotals();
+    }
+    
+    updateTotals();
+    
+    const modal = document.getElementById('kanban-modal');
+    const closeBtn = document.querySelector('.burn-modal-close');
+    const cancelBtn = document.getElementById('kanban-cancel');
+    const submitBtn = document.getElementById('kanban-submit');
+    const qtyInput = document.getElementById('kanban-qty');
+    const message = document.getElementById('kanban-message');
+    let currentPart = null;
+    
+    async function openModal(partnum, desc) {
+        currentPart = partnum;
+        document.getElementById('kanban-partnum').textContent = partnum;
+        document.getElementById('kanban-description').textContent = desc || '-';
+        qtyInput.value = 1;
+        message.className = 'burn-message';
+        submitBtn.disabled = false;
+        
+        // Reset last receipt display
+        const lastRow = document.getElementById('kanban-last-row');
+        const lastSpan = document.getElementById('kanban-last');
+        lastRow.style.display = 'none';
+        lastSpan.textContent = '';
+        
+        modal.style.display = 'block';
+        qtyInput.focus();
+        qtyInput.select();
+        
+        // Fetch last receipt
+        try {
+            const resp = await fetch(`/api/kanban/last/${partnum}`);
+            const data = await resp.json();
+            if (data && data.TranQty) {
+                const qty = Math.round(data.TranQty);
+                const date = data.TranDate || '';
+                const name = data.EmployeeName || data.EntryPerson || 'Unknown';
+                lastSpan.textContent = `${qty} @ ${date} by ${name}`;
+                lastRow.style.display = 'flex';
+            }
+        } catch (e) {
+            // Silently ignore - not critical
+        }
+    }
+    
+    function closeModal() { modal.style.display = 'none'; }
+    
+    document.querySelectorAll('.billet-row').forEach(row => {
+        row.addEventListener('click', () => {
+            if (!getStoredEmployee()) { alert('Please log in first.'); return; }
+            openModal(row.dataset.partnum, row.dataset.description);
+        });
+    });
+    
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    window.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    qtyInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitBtn.click(); } });
+    
+    submitBtn.addEventListener('click', async () => {
+        const emp = getStoredEmployee();
+        if (!emp) { message.textContent = 'Not logged in.'; message.className = 'burn-message error'; return; }
+        const qty = parseInt(qtyInput.value, 10);
+        if (!qty || qty < 1) { message.textContent = 'Enter a valid quantity.'; message.className = 'burn-message error'; return; }
+        
+        submitBtn.disabled = true;
+        message.textContent = 'Processing...';
+        message.className = 'burn-message processing';
+        
+        try {
+            const resp = await fetch('/api/kanban/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ empId: emp.id, partNum: currentPart, quantity: qty })
+            });
+            const result = await resp.json();
+            if (result.success) {
+                message.textContent = result.message || 'Success';
+                message.className = 'burn-message success';
+                setTimeout(() => { closeModal(); location.reload(); }, 1000);
+            } else {
+                message.textContent = result.error || 'Failed';
+                message.className = 'burn-message error';
+                submitBtn.disabled = false;
+            }
+        } catch (e) {
+            message.textContent = 'Error: ' + e.message;
+            message.className = 'burn-message error';
+            submitBtn.disabled = false;
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,5 +1,5 @@
 # app/config.py
-# Version 1.0 — 2025-01-01
+# Version 1.1 — 2026-01-04
 #
 # Database configuration for The Queue
 # Uses Windows Authentication to connect to Epicor SQL Server
@@ -7,10 +7,15 @@
 import os
 from sqlalchemy import create_engine
 
-# Connection String for EPIC10LIVE using Windows Authentication
+# Read from environment
+DB_SERVER = os.getenv('DB_SERVER', 'SQL1.CORP.JD2.COM')
+DB_NAME = os.getenv('DB_NAME', 'EPIC102700TEST')
+ODBC_DRIVER = os.getenv('ODBC_DRIVER', 'ODBC Driver 18 for SQL Server')
+
+# Build connection string dynamically
 CONN_STR = (
-    "mssql+pyodbc://@SQL1.CORP.JD2.COM/EPIC102700TEST"
-    "?driver=ODBC+Driver+18+for+SQL+Server"
+    f"mssql+pyodbc://@{DB_SERVER}/{DB_NAME}"
+    f"?driver={ODBC_DRIVER.replace(' ', '+')}"
     "&trusted_connection=yes&TrustServerCertificate=yes"
 )
 

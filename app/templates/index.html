@@ -42,17 +42,352 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    
+    /* Home header with Kanban button */
+    .home-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+    
+    .home-header h1 {
+        margin: 0;
+    }
+    
+    .kanban-home-btn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .kanban-home-btn:hover {
+        background: #1d4ed8;
+    }
+    
+    /* Kanban Modal */
+    .kanban-modal {
+        display: none;
+        position: fixed;
+        z-index: 2000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.75);
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .kanban-modal-content {
+        background: #1e1e1e;
+        border-radius: 12px;
+        width: 500px;
+        max-width: 95%;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        border: 1px solid #333;
+    }
+    
+    .kanban-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #333;
+        background: #252525;
+    }
+    
+    .kanban-modal-header h3 {
+        margin: 0;
+        color: #f0f0f0;
+        font-size: 1.25rem;
+    }
+    
+    .kanban-modal-close {
+        font-size: 1.5rem;
+        color: #888;
+        cursor: pointer;
+        line-height: 1;
+    }
+    
+    .kanban-modal-close:hover {
+        color: #fff;
+    }
+    
+    .kanban-modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+    
+    .kanban-search-row {
+        margin-bottom: 1rem;
+    }
+    
+    .kanban-search-row label {
+        display: block;
+        color: #888;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .kanban-search-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        font-size: 1.1rem;
+        background: #2a2a2a;
+        border: 2px solid #444;
+        border-radius: 6px;
+        color: #fff;
+    }
+    
+    .kanban-search-input:focus {
+        outline: none;
+        border-color: #3b82f6;
+    }
+    
+    .kanban-results {
+        max-height: 250px;
+        overflow-y: auto;
+        margin-bottom: 1rem;
+    }
+    
+    .kanban-results-hint,
+    .kanban-results-loading,
+    .kanban-results-empty,
+    .kanban-results-error {
+        padding: 1rem;
+        text-align: center;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    
+    .kanban-results-error {
+        color: #f87171;
+    }
+    
+    .kanban-result-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: #252525;
+        border: 1px solid #333;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    
+    .kanban-result-item:hover {
+        background: #333;
+        border-color: #3b82f6;
+    }
+    
+    .result-partnum {
+        font-weight: 600;
+        color: #fff;
+        min-width: 150px;
+    }
+    
+    .result-desc {
+        flex: 1;
+        color: #aaa;
+        font-size: 0.9rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .result-onhand {
+        color: #22c55e;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    .kanban-selected {
+        background: #1a3a1a;
+        border: 2px solid #22c55e;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .kanban-selected-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    #kanban-selected-part {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #22c55e;
+    }
+    
+    .kanban-clear-btn {
+        background: transparent;
+        border: 1px solid #666;
+        color: #999;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    
+    .kanban-clear-btn:hover {
+        background: #333;
+        color: #fff;
+    }
+    
+    .kanban-selected-desc {
+        color: #aaa;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+    }
+    
+    .kanban-qty-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .kanban-qty-row label {
+        color: #888;
+        font-size: 0.9rem;
+    }
+    
+    .kanban-qty-input {
+        width: 100px;
+        padding: 0.6rem 0.75rem;
+        font-size: 1.25rem;
+        text-align: center;
+        background: #2a2a2a;
+        border: 2px solid #444;
+        border-radius: 6px;
+        color: #fff;
+    }
+    
+    .kanban-qty-input:focus {
+        outline: none;
+        border-color: #22c55e;
+    }
+    
+    .kanban-last-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .kanban-last-row label {
+        color: #666;
+    }
+    
+    .kanban-last-row span {
+        color: #f0a0a0;
+    }
+    
+    .kanban-message {
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 0.95rem;
+        display: none;
+    }
+    
+    .kanban-message.success {
+        display: block;
+        background: #14532d;
+        color: #86efac;
+    }
+    
+    .kanban-message.error {
+        display: block;
+        background: #7f1d1d;
+        color: #fca5a5;
+    }
+    
+    .kanban-message.processing {
+        display: block;
+        background: #1e3a5f;
+        color: #93c5fd;
+    }
+    
+    .kanban-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #333;
+        background: #252525;
+    }
+    
+    .kanban-btn {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    
+    .kanban-btn-cancel {
+        background: #333;
+        color: #ccc;
+    }
+    
+    .kanban-btn-cancel:hover {
+        background: #444;
+    }
+    
+    .kanban-btn-submit {
+        background: #22c55e;
+        color: #fff;
+    }
+    
+    .kanban-btn-submit:hover {
+        background: #16a34a;
+    }
+    
+    .kanban-btn-submit:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="home-container">
-    <h1>Select Work Cell</h1>
-    <div class="workcell-grid">
-        {% for wc in workcells %}
-        <a href="{{ url_for('views.queue', workcell_id=wc.id) }}" class="workcell-btn" data-workcell="{{ wc.name }}">
-            {{ wc.name }}
-        </a>
+    <div class="home-header">
+        <h1>Select Work Cell</h1>
+        <button id="kanban-btn" class="kanban-home-btn">Kanban Receipt</button>
+    </div>
+    <div class="groups-container">
+        {% for group in groups %}
+        <div class="workcell-group">
+            <h2 class="group-title">{{ group.name }}</h2>
+            <div class="workcell-grid">
+                {% for wc in group.workcells %}
+                <a href="{{ url_for('views.queue', workcell_id=wc.id) }}" class="workcell-btn" data-workcell="{{ wc.name }}">
+                    {{ wc.name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
         {% endfor %}
     </div>
 </div>
@@ -61,10 +396,48 @@
     <div class="spinner"></div>
     <div class="loading-text" id="loading-text">Loading...</div>
 </div>
+
+<!-- Kanban Modal -->
+<div id="kanban-modal" class="kanban-modal">
+    <div class="kanban-modal-content">
+        <div class="kanban-modal-header">
+            <h3>Kanban Receipt</h3>
+            <span class="kanban-modal-close">&times;</span>
+        </div>
+        <div class="kanban-modal-body">
+            <div class="kanban-search-row">
+                <label>Search Part:</label>
+                <input type="text" id="kanban-search" class="kanban-search-input" placeholder="Enter part number or description..." autocomplete="off">
+            </div>
+            <div id="kanban-results" class="kanban-results"></div>
+            <div id="kanban-selected" class="kanban-selected" style="display: none;">
+                <div class="kanban-selected-header">
+                    <span id="kanban-selected-part"></span>
+                    <button id="kanban-clear" class="kanban-clear-btn">✕ Clear</button>
+                </div>
+                <div id="kanban-selected-desc" class="kanban-selected-desc"></div>
+                <div class="kanban-qty-row">
+                    <label>Quantity:</label>
+                    <input type="number" id="kanban-qty" class="kanban-qty-input" min="1" value="1" autocomplete="off">
+                </div>
+                <div id="kanban-last-row" class="kanban-last-row" style="display: none;">
+                    <label>Last:</label>
+                    <span id="kanban-last"></span>
+                </div>
+            </div>
+            <div id="kanban-message" class="kanban-message"></div>
+        </div>
+        <div class="kanban-modal-footer">
+            <button id="kanban-cancel" class="kanban-btn kanban-btn-cancel">Cancel</button>
+            <button id="kanban-submit" class="kanban-btn kanban-btn-submit" disabled>Submit</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Workcell button loading
 document.querySelectorAll('.workcell-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -77,11 +450,192 @@ document.querySelectorAll('.workcell-btn').forEach(btn => {
         loadingText.textContent = `Loading ${name}...`;
         overlay.classList.add('active');
         
-        // Navigate after a brief moment to let the overlay show
         setTimeout(() => {
             window.location.href = href;
         }, 50);
     });
+});
+
+// ============================================================================
+// KANBAN MODAL
+// ============================================================================
+
+function getStoredEmployee() {
+    const stored = localStorage.getItem('thequeue_employee');
+    return stored ? JSON.parse(stored) : null;
+}
+
+const kanbanModal = document.getElementById('kanban-modal');
+const kanbanBtn = document.getElementById('kanban-btn');
+const kanbanCloseBtn = document.querySelector('.kanban-modal-close');
+const kanbanCancelBtn = document.getElementById('kanban-cancel');
+const kanbanSubmitBtn = document.getElementById('kanban-submit');
+const kanbanSearchInput = document.getElementById('kanban-search');
+const kanbanResults = document.getElementById('kanban-results');
+const kanbanSelected = document.getElementById('kanban-selected');
+const kanbanQtyInput = document.getElementById('kanban-qty');
+const kanbanMessage = document.getElementById('kanban-message');
+
+let selectedPart = null;
+let searchTimeout = null;
+
+function openKanbanModal() {
+    const emp = getStoredEmployee();
+    if (!emp) {
+        alert('Please log in first.');
+        return;
+    }
+    
+    // Reset modal state
+    selectedPart = null;
+    kanbanSearchInput.value = '';
+    kanbanResults.innerHTML = '';
+    kanbanSelected.style.display = 'none';
+    kanbanQtyInput.value = 1;
+    kanbanMessage.className = 'kanban-message';
+    kanbanMessage.textContent = '';
+    kanbanSubmitBtn.disabled = true;
+    document.getElementById('kanban-last-row').style.display = 'none';
+    
+    kanbanModal.style.display = 'flex';
+    kanbanSearchInput.focus();
+}
+
+function closeKanbanModal() {
+    kanbanModal.style.display = 'none';
+}
+
+async function searchParts(query) {
+    if (query.length < 2) {
+        kanbanResults.innerHTML = '<div class="kanban-results-hint">Type at least 2 characters to search...</div>';
+        return;
+    }
+    
+    kanbanResults.innerHTML = '<div class="kanban-results-loading">Searching...</div>';
+    
+    try {
+        const resp = await fetch(`/api/parts/search?q=${encodeURIComponent(query)}`);
+        const parts = await resp.json();
+        
+        if (parts.length === 0) {
+            kanbanResults.innerHTML = '<div class="kanban-results-empty">No parts found</div>';
+            return;
+        }
+        
+        kanbanResults.innerHTML = parts.map(p => `
+            <div class="kanban-result-item" data-partnum="${p.PartNum}" data-desc="${p.PartDescription || ''}">
+                <span class="result-partnum">${p.PartNum}</span>
+                <span class="result-desc">${p.PartDescription || ''}</span>
+                <span class="result-onhand">OH: ${Math.floor(p.OnHand || 0)}</span>
+            </div>
+        `).join('');
+        
+        // Add click handlers
+        kanbanResults.querySelectorAll('.kanban-result-item').forEach(item => {
+            item.addEventListener('click', () => selectPart(item.dataset.partnum, item.dataset.desc));
+        });
+    } catch (e) {
+        kanbanResults.innerHTML = '<div class="kanban-results-error">Error searching parts</div>';
+    }
+}
+
+async function selectPart(partNum, desc) {
+    selectedPart = partNum;
+    document.getElementById('kanban-selected-part').textContent = partNum;
+    document.getElementById('kanban-selected-desc').textContent = desc || '';
+    
+    kanbanResults.innerHTML = '';
+    kanbanSearchInput.value = '';
+    kanbanSelected.style.display = 'block';
+    kanbanSubmitBtn.disabled = false;
+    kanbanQtyInput.focus();
+    kanbanQtyInput.select();
+    
+    // Fetch last receipt
+    try {
+        const resp = await fetch(`/api/kanban/last/${partNum}`);
+        const data = await resp.json();
+        if (data && data.TranQty) {
+            const qty = Math.round(data.TranQty);
+            const date = data.TranDate || '';
+            const name = data.EmployeeName || data.EntryPerson || 'Unknown';
+            document.getElementById('kanban-last').textContent = `${qty} @ ${date} by ${name}`;
+            document.getElementById('kanban-last-row').style.display = 'flex';
+        }
+    } catch (e) {
+        // Ignore
+    }
+}
+
+function clearSelection() {
+    selectedPart = null;
+    kanbanSelected.style.display = 'none';
+    kanbanSubmitBtn.disabled = true;
+    document.getElementById('kanban-last-row').style.display = 'none';
+    kanbanSearchInput.focus();
+}
+
+async function submitKanban() {
+    const emp = getStoredEmployee();
+    if (!emp || !selectedPart) return;
+    
+    const qty = parseInt(kanbanQtyInput.value, 10);
+    if (!qty || qty < 1) {
+        kanbanMessage.textContent = 'Enter a valid quantity.';
+        kanbanMessage.className = 'kanban-message error';
+        return;
+    }
+    
+    kanbanSubmitBtn.disabled = true;
+    kanbanMessage.textContent = 'Processing...';
+    kanbanMessage.className = 'kanban-message processing';
+    
+    try {
+        const resp = await fetch('/api/kanban/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empId: emp.id, partNum: selectedPart, quantity: qty })
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            kanbanMessage.textContent = result.message || 'Success!';
+            kanbanMessage.className = 'kanban-message success';
+            setTimeout(() => closeKanbanModal(), 1500);
+        } else {
+            kanbanMessage.textContent = result.error || 'Failed';
+            kanbanMessage.className = 'kanban-message error';
+            kanbanSubmitBtn.disabled = false;
+        }
+    } catch (e) {
+        kanbanMessage.textContent = 'Error: ' + e.message;
+        kanbanMessage.className = 'kanban-message error';
+        kanbanSubmitBtn.disabled = false;
+    }
+}
+
+// Event listeners
+kanbanBtn.addEventListener('click', openKanbanModal);
+kanbanCloseBtn.addEventListener('click', closeKanbanModal);
+kanbanCancelBtn.addEventListener('click', closeKanbanModal);
+kanbanSubmitBtn.addEventListener('click', submitKanban);
+document.getElementById('kanban-clear').addEventListener('click', clearSelection);
+
+kanbanSearchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => searchParts(e.target.value.trim()), 300);
+});
+
+kanbanQtyInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitKanban();
+});
+
+window.addEventListener('click', (e) => {
+    if (e.target === kanbanModal) closeKanbanModal();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && kanbanModal.style.display === 'flex') closeKanbanModal();
 });
 </script>
 {% endblock %}

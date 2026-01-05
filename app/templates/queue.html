@@ -47,6 +47,22 @@
         </select>
     </div>
     {% endif %}
+    
+    {% if workcell_config.filter_by_resource %}
+    <div class="resource-filter">
+        <select id="resource-select" class="resource-select">
+            <option value="all">Loading resources...</option>
+        </select>
+    </div>
+    {% endif %}
+    
+    {% if workcell_config.filter_by_capability %}
+    <div class="capability-filter">
+        <select id="capability-select" class="capability-select">
+            <option value="all">Loading capabilities...</option>
+        </select>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -93,7 +109,9 @@
                 data-machunload="{{ job.MachUnload or 0 }}"
                 data-machprogram="{{ job.MachProgram or '' }}"
                 data-priority="{{ job.Priority or '' }}"
-                data-pdfpath="{{ job.PdfPath or '' }}">
+                data-pdfpath="{{ job.PdfPath or '' }}"
+                data-resourceid="{{ job.ResourceID or '' }}"
+                data-capabilityid="{{ job.CapabilityID or '' }}">
                 
                 <td class="col-select"><input type="checkbox" class="row-select" onclick="event.stopPropagation()"></td>
                 
@@ -204,7 +222,20 @@
                     <label for="single-end-scrap">Scrap</label>
                     <input type="number" id="single-end-scrap" class="labor-input" min="0" step="1" value="0">
                 </div>
+                <div class="labor-input-group checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="single-end-done">
+                        <span>Mark Complete</span>
+                    </label>
+                </div>
             </div>
+            <div id="single-end-first-op-options" class="first-op-options" style="display: none;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="single-end-set-job-qty" checked>
+                    <span>Set job quantity to match completed</span>
+                </label>
+            </div>
+            <div id="single-end-warning" class="qty-warning" style="display: none;"></div>
             <div id="single-end-error" class="labor-modal-error"></div>
         </div>
         
@@ -227,7 +258,18 @@
         
         <div class="mass-end-controls">
             <label><input type="checkbox" id="mass-end-select-all"> Select All</label>
+            <div class="quick-fill-row">
+                <span class="quick-fill-label">Quick Fill:</span>
+                <button type="button" class="quick-fill-btn" onclick="quickFill(1)">1</button>
+                <button type="button" class="quick-fill-btn" onclick="quickFill(2)">2</button>
+                <button type="button" class="quick-fill-btn" onclick="quickFillLeft()">Left</button>
+                <span class="quick-fill-divider">|</span>
+                <input type="number" id="quick-fill-custom" class="quick-fill-input" min="1" step="1" placeholder="#">
+                <button type="button" class="quick-fill-btn" onclick="quickFillCustom()">Fill</button>
+            </div>
         </div>
+        
+        <div id="mass-end-warning" class="qty-warning" style="display: none;"></div>
         
         <div class="mass-end-table-wrapper">
             <table class="mass-end-table">
@@ -243,6 +285,7 @@
                         <th class="col-qty">Avail</th>
                         <th class="col-input">Complete</th>
                         <th class="col-input">Scrap</th>
+                        <th class="col-done">Done</th>
                     </tr>
                 </thead>
                 <tbody id="mass-end-tbody">
@@ -297,8 +340,12 @@ let filteredRows = [];  // Rows that pass current filters
 let currentOpFilter = 'all';
 let currentMaterialFilter = 'all';
 let currentColorFilter = 'all';
+let currentResourceFilter = 'all';
+let currentCapabilityFilter = 'all';
 let materialJobKeys = null;  // null = show all, array = show only these
 let colorJobKeys = null;  // null = show all, array = show only these
+let resourceJobKeys = null;  // null = show all, array = show only these
+let capabilityJobKeys = null;  // null = show all, array = show only these
 
 // Detail panel references (declared early for use in applyFilters)
 let currentExpandedRow = null;
@@ -403,6 +450,90 @@ if (colorSelect) {
     });
 }
 
+// --- RESOURCE FILTER DROPDOWN ---
+const resourceSelect = document.getElementById('resource-select');
+if (resourceSelect) {
+    // Load resources in background
+    fetch('/api/resources/{{ workcell_id }}')
+        .then(response => response.json())
+        .then(resources => {
+            resourceSelect.innerHTML = '<option value="all">All Resources</option>';
+            resources.forEach(r => {
+                const option = document.createElement('option');
+                option.value = r.ResourceID;
+                option.textContent = r.ResourceID;
+                resourceSelect.appendChild(option);
+            });
+        })
+        .catch(err => {
+            resourceSelect.innerHTML = '<option value="all">All Resources</option>';
+            console.error('Failed to load resources:', err);
+        });
+    
+    resourceSelect.addEventListener('change', () => {
+        currentResourceFilter = resourceSelect.value;
+        if (currentResourceFilter === 'all') {
+            resourceJobKeys = null;
+            applyFilters();
+        } else {
+            // Fetch jobs that use this resource
+            fetch('/api/jobs_by_resource/{{ workcell_id }}/' + encodeURIComponent(currentResourceFilter))
+                .then(response => response.json())
+                .then(jobKeys => {
+                    resourceJobKeys = jobKeys;
+                    applyFilters();
+                })
+                .catch(err => {
+                    console.error('Failed to load jobs by resource:', err);
+                    resourceJobKeys = null;
+                    applyFilters();
+                });
+        }
+    });
+}
+
+// --- CAPABILITY FILTER DROPDOWN ---
+const capabilitySelect = document.getElementById('capability-select');
+if (capabilitySelect) {
+    // Load capabilities in background
+    fetch('/api/capabilities/{{ workcell_id }}')
+        .then(response => response.json())
+        .then(capabilities => {
+            capabilitySelect.innerHTML = '<option value="all">All Capabilities</option>';
+            capabilities.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.CapabilityID;
+                option.textContent = c.CapabilityID;
+                capabilitySelect.appendChild(option);
+            });
+        })
+        .catch(err => {
+            capabilitySelect.innerHTML = '<option value="all">All Capabilities</option>';
+            console.error('Failed to load capabilities:', err);
+        });
+    
+    capabilitySelect.addEventListener('change', () => {
+        currentCapabilityFilter = capabilitySelect.value;
+        if (currentCapabilityFilter === 'all') {
+            capabilityJobKeys = null;
+            applyFilters();
+        } else {
+            // Fetch jobs that use this capability
+            fetch('/api/jobs_by_capability/{{ workcell_id }}/' + encodeURIComponent(currentCapabilityFilter))
+                .then(response => response.json())
+                .then(jobKeys => {
+                    capabilityJobKeys = jobKeys;
+                    applyFilters();
+                })
+                .catch(err => {
+                    console.error('Failed to load jobs by capability:', err);
+                    capabilityJobKeys = null;
+                    applyFilters();
+                });
+        }
+    });
+}
+
 function applyFilters() {
     const searchQuery = document.getElementById('search-box').value.toLowerCase();
     const tbody = document.getElementById('job-tbody');
@@ -418,8 +549,10 @@ function applyFilters() {
         const matchesOp = currentOpFilter === 'all' || opCode === currentOpFilter;
         const matchesMaterial = materialJobKeys === null || materialJobKeys.includes(jobKey);
         const matchesColor = colorJobKeys === null || colorJobKeys.includes(jobKey);
+        const matchesResource = resourceJobKeys === null || resourceJobKeys.includes(jobKey);
+        const matchesCapability = capabilityJobKeys === null || capabilityJobKeys.includes(jobKey);
         
-        return matchesSearch && matchesOp && matchesMaterial && matchesColor;
+        return matchesSearch && matchesOp && matchesMaterial && matchesColor && matchesResource && matchesCapability;
     });
     
     // Reset to page 1 when filters change
@@ -556,7 +689,9 @@ document.querySelectorAll('.job-row').forEach(row => {
             priority: row.dataset.priority,
             qtyAvailable: row.dataset.qtyAvailable,
             isFirstOp: row.dataset.isFirstOp,
-            mtlStatus: row.dataset.mtlStatus
+            mtlStatus: row.dataset.mtlStatus,
+            resourceid: row.dataset.resourceid,
+            capabilityid: row.dataset.capabilityid
         };
         
         const description = row.querySelector('.col-desc')?.textContent?.trim() || '';
@@ -702,10 +837,11 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
         html += '</div>';
     }
     
-    // Group 4: Other fields (material, color, program)
+    // Group 4: Other fields (material, color, program, resource, capability)
     const hasOtherFields = (detailFields.includes('material') && extraData.material) ||
                            (detailFields.includes('finishcolor') && extraData.finishcolor) ||
-                           (detailFields.includes('machprogram') && extraData.machprogram);
+                           (detailFields.includes('machprogram') && extraData.machprogram) ||
+                           extraData.resourceid || extraData.capabilityid;
     if (hasOtherFields) {
         html += '<div class="info-group">';
         if (detailFields.includes('material') && extraData.material) {
@@ -716,6 +852,12 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
         }
         if (detailFields.includes('machprogram') && extraData.machprogram) {
             html += `<div class="info-item"><span class="info-label">Program</span><span class="info-value">${extraData.machprogram}</span></div>`;
+        }
+        if (extraData.resourceid) {
+            html += `<div class="info-item"><span class="info-label">Resource</span><span class="info-value">${extraData.resourceid}</span></div>`;
+        }
+        if (extraData.capabilityid) {
+            html += `<div class="info-item"><span class="info-label">Capability</span><span class="info-value">${extraData.capabilityid}</span></div>`;
         }
         html += '</div>';
     }
@@ -1146,6 +1288,15 @@ async function startActivity() {
 const singleEndModal = document.getElementById('single-end-modal');
 let pendingSingleEnd = null;
 
+// Track current modal state for validation
+let singleEndState = {
+    left: 0,
+    availQty: null,
+    isFirstOp: false,
+    jobNum: '',
+    prodQty: 0
+};
+
 function showSingleEndModal() {
     console.log('showSingleEndModal called');
     const emp = getCurrentEmployee();
@@ -1182,7 +1333,8 @@ function showSingleEndModal() {
         empId: emp.id,
         laborHedSeq: labor.LaborHedSeq,
         laborDtlSeq: labor.LaborDtlSeq,
-        jobKey: jobKey
+        jobKey: jobKey,
+        jobNum: jobNum
     };
     
     // Title
@@ -1208,8 +1360,17 @@ function showSingleEndModal() {
     const left = parseInt(leftCell?.dataset?.value) || 0;
     const prodQty = left + qtyCompleted;
     const isFirstOp = currentExpandedRow.dataset.isFirstOp === '1' || currentExpandedRow.dataset.isFirstOp === 'True';
-    const availQty = isFirstOp ? '-' : (parseInt(currentExpandedRow.dataset.qtyAvailable) || 0);
+    const availQty = isFirstOp ? null : (parseInt(currentExpandedRow.dataset.qtyAvailable) || 0);
     const mtlStatus = currentExpandedRow.dataset.mtlStatus || 'none';
+    
+    // Store state for validation
+    singleEndState = {
+        left: left,
+        availQty: availQty,
+        isFirstOp: isFirstOp,
+        jobNum: jobNum,
+        prodQty: prodQty
+    };
     
     let mtlIcon = '-';
     if (mtlStatus === 'star') mtlIcon = '<span class="mtl-star">★</span>';
@@ -1217,13 +1378,20 @@ function showSingleEndModal() {
     else if (mtlStatus === 'partial') mtlIcon = '<span class="mtl-partial">⚠</span>';
     else if (mtlStatus === 'missing') mtlIcon = '<span class="mtl-missing">✗</span>';
     
+    const availDisplay = isFirstOp ? '-' : availQty;
     document.getElementById('single-end-qty-row').innerHTML = `
         <div class="qty-box"><span class="qty-label">Qty</span><span class="qty-value">${prodQty}</span></div>
         <div class="qty-box"><span class="qty-label">Done</span><span class="qty-value">${qtyCompleted}</span></div>
         <div class="qty-box"><span class="qty-label">Left</span><span class="qty-value">${left}</span></div>
-        <div class="qty-box"><span class="qty-label">Avail</span><span class="qty-value ${typeof availQty === 'number' && availQty > 0 ? 'avail-positive' : ''}">${availQty}</span></div>
+        <div class="qty-box"><span class="qty-label">Avail</span><span class="qty-value ${availQty !== null && availQty > 0 ? 'avail-positive' : ''}">${availDisplay}</span></div>
         <div class="qty-box"><span class="qty-label">Mtl</span><span class="qty-value">${mtlIcon}</span></div>
     `;
+    
+    // Show job qty option - checked by default for first ops, unchecked for later ops
+    const jobQtyOptions = document.getElementById('single-end-first-op-options');
+    const jobQtyCheckbox = document.getElementById('single-end-set-job-qty');
+    jobQtyOptions.style.display = '';
+    jobQtyCheckbox.checked = isFirstOp;  // Default checked only for first ops
     
     // Operations table
     let opsHtml = '';
@@ -1281,10 +1449,36 @@ function showSingleEndModal() {
     // Reset inputs
     document.getElementById('single-end-qty').value = '';
     document.getElementById('single-end-scrap').value = '0';
+    document.getElementById('single-end-done').checked = false;
+    document.getElementById('single-end-warning').style.display = 'none';
     document.getElementById('single-end-error').textContent = '';
     
     singleEndModal.classList.remove('hidden');
     document.getElementById('single-end-qty').focus();
+}
+
+// Validate and update Single End Modal state when qty changes
+function validateSingleEndQty() {
+    const qtyInput = document.getElementById('single-end-qty');
+    const doneCheckbox = document.getElementById('single-end-done');
+    const warning = document.getElementById('single-end-warning');
+    
+    const qty = parseFloat(qtyInput.value) || 0;
+    
+    // Auto-check Done if qty >= left
+    if (qty > 0 && qty >= singleEndState.left) {
+        doneCheckbox.checked = true;
+    } else {
+        doneCheckbox.checked = false;
+    }
+    
+    // Show warning if qty > available (for non-first ops)
+    if (!singleEndState.isFirstOp && singleEndState.availQty !== null && qty > singleEndState.availQty) {
+        warning.innerHTML = `⚠️ <strong>Warning:</strong> Quantity (${qty}) exceeds available from prior operation (${singleEndState.availQty})`;
+        warning.style.display = 'block';
+    } else {
+        warning.style.display = 'none';
+    }
 }
 
 function hideSingleEndModal() {
@@ -1297,6 +1491,9 @@ async function submitSingleEnd() {
     
     const laborQty = parseFloat(document.getElementById('single-end-qty').value) || 0;
     const scrapQty = parseFloat(document.getElementById('single-end-scrap').value) || 0;
+    const setJobQty = document.getElementById('single-end-set-job-qty').checked;
+    // If setting job qty to match completed, automatically mark complete
+    const markComplete = setJobQty || document.getElementById('single-end-done').checked;
     
     if (laborQty <= 0 && scrapQty <= 0) {
         document.getElementById('single-end-error').textContent = 'Please enter a quantity';
@@ -1309,6 +1506,31 @@ async function submitSingleEnd() {
     document.getElementById('single-end-error').textContent = '';
     
     try {
+        // If set job qty is checked, update job quantity to total completed (existing + new)
+        if (setJobQty && laborQty > 0) {
+            // Get existing qty completed from the row
+            const existingCompleted = parseInt(currentExpandedRow.dataset.qtyCompleted) || 0;
+            const newJobQty = existingCompleted + laborQty;
+            
+            submitBtn.textContent = 'Updating job qty...';
+            const qtyResponse = await fetch('/api/job/update-quantity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jobNum: pendingSingleEnd.jobNum,
+                    newQty: newJobQty
+                })
+            });
+            const qtyResult = await qtyResponse.json();
+            if (!qtyResult.success) {
+                document.getElementById('single-end-error').textContent = 'Failed to update job qty: ' + (qtyResult.error || 'Unknown error');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'End Activity';
+                return;
+            }
+        }
+        
+        submitBtn.textContent = 'Ending...';
         const response = await fetch('/api/labor/end', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1317,7 +1539,8 @@ async function submitSingleEnd() {
                 laborHedSeq: pendingSingleEnd.laborHedSeq,
                 laborDtlSeq: pendingSingleEnd.laborDtlSeq,
                 laborQty: laborQty,
-                scrapQty: scrapQty
+                scrapQty: scrapQty,
+                complete: markComplete
             })
         });
         
@@ -1327,6 +1550,10 @@ async function submitSingleEnd() {
             await loadActiveLabor();
             hideSingleEndModal();
             updateStartEndButtons();
+            // Reload page to reflect qty changes
+            if (setJobQty) {
+                location.reload();
+            }
         } else {
             document.getElementById('single-end-error').textContent = result.error;
         }
@@ -1344,6 +1571,14 @@ document.getElementById('single-end-cancel')?.addEventListener('click', hideSing
 document.getElementById('single-end-submit')?.addEventListener('click', submitSingleEnd);
 document.getElementById('single-end-qty')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') submitSingleEnd();
+});
+document.getElementById('single-end-qty')?.addEventListener('input', validateSingleEndQty);
+
+// When "Set job qty" is checked, automatically check "Mark Complete"
+document.getElementById('single-end-set-job-qty')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+        document.getElementById('single-end-done').checked = true;
+    }
 });
 
 // ============================================================================
@@ -1372,8 +1607,10 @@ function showMassEndModal() {
     tbody.innerHTML = activeLaborRecords.map(rec => {
         const key = `${rec.JobNum}-${rec.AssemblySeq}-${rec.OprSeq}`;
         const availDisplay = rec.QtyAvailable === null ? '-' : rec.QtyAvailable;
+        const isFirstOp = rec.QtyAvailable === null;
         return `
-            <tr data-labor-key="${key}" data-hed="${rec.LaborHedSeq}" data-dtl="${rec.LaborDtlSeq}">
+            <tr data-labor-key="${key}" data-hed="${rec.LaborHedSeq}" data-dtl="${rec.LaborDtlSeq}" 
+                data-left="${rec.QtyLeft || 0}" data-avail="${rec.QtyAvailable}" data-first-op="${isFirstOp}">
                 <td><input type="checkbox" class="mass-end-check" checked></td>
                 <td>${rec.JobNum}</td>
                 <td>${rec.PartNum || ''}</td>
@@ -1384,14 +1621,109 @@ function showMassEndModal() {
                 <td class="col-qty">${availDisplay}</td>
                 <td class="col-input"><input type="number" class="mass-end-qty" min="0" step="1" value=""></td>
                 <td class="col-input"><input type="number" class="mass-end-scrap" min="0" step="1" value="0"></td>
+                <td class="col-done"><input type="checkbox" class="mass-end-done"></td>
             </tr>
         `;
     }).join('');
     
+    // Add input event listeners for qty validation
+    tbody.querySelectorAll('.mass-end-qty').forEach(input => {
+        input.addEventListener('input', validateMassEndRow);
+    });
+    
     document.getElementById('mass-end-select-all').checked = true;
+    document.getElementById('mass-end-warning').style.display = 'none';
     document.getElementById('mass-end-error').textContent = '';
     
     massEndModal.classList.remove('hidden');
+}
+
+// Validate Mass End row when qty changes
+function validateMassEndRow(e) {
+    const row = e.target.closest('tr');
+    updateRowDoneCheckbox(row);
+    validateMassEndWarnings();
+}
+
+// Check all rows and show warning if any qty > available
+function validateMassEndWarnings() {
+    const rows = document.querySelectorAll('#mass-end-tbody tr');
+    const warnings = [];
+    
+    rows.forEach(row => {
+        const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
+        const avail = row.dataset.avail === 'null' ? null : parseFloat(row.dataset.avail);
+        const isFirstOp = row.dataset.firstOp === 'true';
+        const jobNum = row.querySelector('td:nth-child(2)').textContent;
+        
+        if (!isFirstOp && avail !== null && qty > avail) {
+            warnings.push(`${jobNum}: ${qty} entered, ${avail} available`);
+        }
+    });
+    
+    const warningEl = document.getElementById('mass-end-warning');
+    if (warnings.length > 0) {
+        warningEl.innerHTML = `⚠️ <strong>Warning:</strong> Quantity exceeds available from prior operation:<br>${warnings.join('<br>')}`;
+        warningEl.style.display = 'block';
+    } else {
+        warningEl.style.display = 'none';
+    }
+}
+
+// Quick Fill functions for Mass End Modal
+function quickFill(value) {
+    const rows = document.querySelectorAll('#mass-end-tbody tr');
+    rows.forEach(row => {
+        const checked = row.querySelector('.mass-end-check').checked;
+        if (!checked) return;
+        
+        const qtyInput = row.querySelector('.mass-end-qty');
+        qtyInput.value = value;
+        
+        // Trigger validation for this row
+        updateRowDoneCheckbox(row);
+    });
+    validateMassEndWarnings();
+}
+
+function quickFillLeft() {
+    const rows = document.querySelectorAll('#mass-end-tbody tr');
+    rows.forEach(row => {
+        const checked = row.querySelector('.mass-end-check').checked;
+        if (!checked) return;
+        
+        const left = parseFloat(row.dataset.left) || 0;
+        const qtyInput = row.querySelector('.mass-end-qty');
+        qtyInput.value = left;
+        
+        // Trigger validation for this row
+        updateRowDoneCheckbox(row);
+    });
+    validateMassEndWarnings();
+}
+
+function quickFillCustom() {
+    const customInput = document.getElementById('quick-fill-custom');
+    const value = parseFloat(customInput.value);
+    if (isNaN(value) || customInput.value.trim() === '') {
+        customInput.focus();
+        return;
+    }
+    quickFill(value);
+    customInput.value = '';
+}
+
+// Helper to update Done checkbox for a single row
+function updateRowDoneCheckbox(row) {
+    const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
+    const left = parseFloat(row.dataset.left) || 0;
+    const doneCheckbox = row.querySelector('.mass-end-done');
+    
+    if (qty > 0 && qty >= left) {
+        doneCheckbox.checked = true;
+    } else {
+        doneCheckbox.checked = false;
+    }
 }
 
 function hideMassEndModal() {
@@ -1411,13 +1743,15 @@ async function submitMassEnd() {
         
         const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
         const scrap = parseFloat(row.querySelector('.mass-end-scrap').value) || 0;
+        const done = row.querySelector('.mass-end-done').checked;
         
         if (qty > 0 || scrap > 0) {
             toEnd.push({
                 laborHedSeq: parseInt(row.dataset.hed),
                 laborDtlSeq: parseInt(row.dataset.dtl),
                 laborQty: qty,
-                scrapQty: scrap
+                scrapQty: scrap,
+                complete: done
             });
         }
     });
@@ -1445,7 +1779,8 @@ async function submitMassEnd() {
                     laborHedSeq: item.laborHedSeq,
                     laborDtlSeq: item.laborDtlSeq,
                     laborQty: item.laborQty,
-                    scrapQty: item.scrapQty
+                    scrapQty: item.scrapQty,
+                    complete: item.complete
                 })
             });
             const result = await response.json();
@@ -1477,6 +1812,11 @@ document.getElementById('mass-end-cancel')?.addEventListener('click', hideMassEn
 document.getElementById('mass-end-submit')?.addEventListener('click', submitMassEnd);
 document.getElementById('mass-end-select-all')?.addEventListener('change', (e) => {
     document.querySelectorAll('.mass-end-check').forEach(cb => cb.checked = e.target.checked);
+});
+
+// Enter key on custom fill input
+document.getElementById('quick-fill-custom')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') quickFillCustom();
 });
 
 // ============================================================================

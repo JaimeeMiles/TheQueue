@@ -1,9 +1,11 @@
 # app/logic/queries.py
-# Version 5.0 — 2026-01-02
+# Version 5.1 — 2026-01-04
 #
 # SQL queries for The Queue
 # Uses OpCode-based work cell filtering
 # Material status: star (full demand), check (job ok), partial, none
+# ResourceID from ResourceTimeUsed (actual scheduled resource)
+# CapabilityID from JobOpDtl (scheduling option)
 
 import json
 import os
@@ -136,6 +138,8 @@ def get_bulk_operations(job_nums):
     """
     Get all operations for a list of jobs in one query.
     Returns dict keyed by JobNum.
+    Uses ResourceTimeUsed for actual scheduled ResourceID.
+    Uses JobOpDtl for CapabilityID (scheduling option).
     """
     if not job_nums:
         return {}
@@ -146,9 +150,18 @@ def get_bulk_operations(job_nums):
     query = f"""
         SELECT jo.JobNum, jo.OprSeq, jo.OpCode, jo.OpDesc, jo.QtyCompleted, 
                CAST(jo.OpComplete AS INT) AS OpComplete, jo.ProdStandard, jo.AssemblySeq,
-               jod.ResourceGrpID, 
+               -- For LABOR ENTRY: ResourceGrpID from JobOpDtl with fallback
+               COALESCE(
+                   NULLIF(jod.ResourceGrpID, ''), 
+                   res_from_id.ResourceGrpID
+               ) AS ResourceGrpID, 
+               -- For LABOR ENTRY: ResourceID from JobOpDtl with fallback
                COALESCE(NULLIF(jod.ResourceID, ''), r.ResourceID) AS ResourceID,
-               rg.JCDept,
+               -- For LABOR ENTRY: JCDept from ResourceGroup
+               COALESCE(rg.JCDept, rg_from_id.JCDept) AS JCDept,
+               -- For DISPLAY/FILTER: Scheduled resource from ResourceTimeUsed
+               rtu.ResourceID AS ScheduledResourceID,
+               jod.CapabilityID,
                CONVERT(VARCHAR(10), 
                    (SELECT MAX(ld.ClockInDate) 
                     FROM Erp.LaborDtl ld 
@@ -161,14 +174,31 @@ def get_bulk_operations(job_nums):
             AND jo.JobNum = jod.JobNum 
             AND jo.AssemblySeq = jod.AssemblySeq 
             AND jo.OprSeq = jod.OprSeq
+        -- Get ResourceGroup from JobOpDtl.ResourceGrpID
         LEFT JOIN Erp.ResourceGroup rg ON jod.Company = rg.Company
             AND jod.ResourceGrpID = rg.ResourceGrpID
+        -- Get default Resource from ResourceGroup (first location resource)
         OUTER APPLY (
             SELECT TOP 1 ResourceID 
             FROM Erp.Resource 
             WHERE ResourceGrpID = jod.ResourceGrpID 
               AND Location = 1
         ) r
+        -- If JobOpDtl has ResourceID but no ResourceGrpID, look up the group from Resource table
+        LEFT JOIN Erp.Resource res_from_id ON jod.Company = res_from_id.Company
+            AND jod.ResourceID = res_from_id.ResourceID
+            AND (jod.ResourceGrpID IS NULL OR jod.ResourceGrpID = '')
+        LEFT JOIN Erp.ResourceGroup rg_from_id ON res_from_id.Company = rg_from_id.Company
+            AND res_from_id.ResourceGrpID = rg_from_id.ResourceGrpID
+        -- Get scheduled resource from ResourceTimeUsed (for display/filtering)
+        OUTER APPLY (
+            SELECT TOP 1 ResourceID
+            FROM Erp.ResourceTimeUsed 
+            WHERE Company = jo.Company 
+              AND JobNum = jo.JobNum 
+              AND AssemblySeq = jo.AssemblySeq 
+              AND OprSeq = jo.OprSeq
+        ) rtu
         WHERE jo.JobNum IN ({placeholders})
           AND jo.LaborEntryMethod != 'B'
         ORDER BY jo.JobNum, jo.AssemblySeq DESC, jo.OprSeq ASC
@@ -471,6 +501,144 @@ def get_jobs_using_color(workcell_id, color):
     return [row['JobKey'] for row in result]
 
 
+def get_resources_for_workcell(workcell_id):
+    """
+    Get all unique ResourceIDs for jobs in a workcell.
+    Uses ResourceTimeUsed for actual scheduled resources.
+    Used for the resource filter dropdown on Mill-Lathe.
+    Returns list of dicts with ResourceID.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    
+    query = f"""
+        SELECT DISTINCT rtu.ResourceID
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        INNER JOIN Erp.ResourceTimeUsed rtu ON jo.Company = rtu.Company 
+            AND jo.JobNum = rtu.JobNum 
+            AND jo.AssemblySeq = rtu.AssemblySeq 
+            AND jo.OprSeq = rtu.OprSeq
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+          AND rtu.ResourceID IS NOT NULL
+          AND rtu.ResourceID != ''
+        ORDER BY rtu.ResourceID
+    """
+    
+    return sql_query(query, params)
+
+
+def get_capabilities_for_workcell(workcell_id):
+    """
+    Get all unique CapabilityIDs for jobs in a workcell.
+    Used for the capability filter dropdown on Mill-Lathe.
+    Returns list of dicts with CapabilityID.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    
+    query = f"""
+        SELECT DISTINCT jod.CapabilityID
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        LEFT JOIN Erp.JobOpDtl jod ON jo.Company = jod.Company 
+            AND jo.JobNum = jod.JobNum 
+            AND jo.AssemblySeq = jod.AssemblySeq 
+            AND jo.OprSeq = jod.OprSeq
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+          AND jod.CapabilityID IS NOT NULL
+          AND jod.CapabilityID != ''
+        ORDER BY jod.CapabilityID
+    """
+    
+    return sql_query(query, params)
+
+
+def get_jobs_using_resource(workcell_id, resource_id):
+    """
+    Get job keys (JobNum-AssemblySeq-OprSeq) that use a specific ResourceID.
+    Uses ResourceTimeUsed for actual scheduled resources.
+    Used for filtering by resource selection.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    params['resource'] = resource_id
+    
+    query = f"""
+        SELECT DISTINCT 
+            jo.JobNum + '-' + CAST(jo.AssemblySeq AS VARCHAR) + '-' + CAST(jo.OprSeq AS VARCHAR) AS JobKey
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        INNER JOIN Erp.ResourceTimeUsed rtu ON jo.Company = rtu.Company 
+            AND jo.JobNum = rtu.JobNum 
+            AND jo.AssemblySeq = rtu.AssemblySeq 
+            AND jo.OprSeq = rtu.OprSeq
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+          AND rtu.ResourceID = :resource
+    """
+    
+    result = sql_query(query, params)
+    return [row['JobKey'] for row in result]
+
+
+def get_jobs_using_capability(workcell_id, capability_id):
+    """
+    Get job keys (JobNum-AssemblySeq-OprSeq) that use a specific CapabilityID.
+    Used for filtering by capability selection.
+    """
+    ops = get_workcell_ops(workcell_id)
+    if not ops:
+        return []
+    
+    placeholders = ', '.join([f':op{i}' for i in range(len(ops))])
+    params = {f'op{i}': op for i, op in enumerate(ops)}
+    params['capability'] = capability_id
+    
+    query = f"""
+        SELECT DISTINCT 
+            jo.JobNum + '-' + CAST(jo.AssemblySeq AS VARCHAR) + '-' + CAST(jo.OprSeq AS VARCHAR) AS JobKey
+        FROM Erp.JobOper jo
+        INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company AND jo.JobNum = jh.JobNum
+        LEFT JOIN Erp.JobOpDtl jod ON jo.Company = jod.Company 
+            AND jo.JobNum = jod.JobNum 
+            AND jo.AssemblySeq = jod.AssemblySeq 
+            AND jo.OprSeq = jod.OprSeq
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+          AND jod.CapabilityID = :capability
+    """
+    
+    result = sql_query(query, params)
+    return [row['JobKey'] for row in result]
+
+
 def get_last_checkin(part_num, op_code=None):
     """
     Get the last labor check-in for a part number at a specific operation.
@@ -712,12 +880,34 @@ def get_jobs_for_workcell(workcell_id):
                 ELSE 'none'
             END AS MtlStatus,
             ISNULL(ma.TotalMtls, 0) AS TotalMtls,
-            xfr.XFileName AS PdfPath
+            xfr.XFileName AS PdfPath,
+            -- Resource from ResourceTimeUsed (actual scheduled resource)
+            rtu.ResourceID,
+            -- Capability from JobOpDtl (scheduling option)
+            jod.CapabilityID
         FROM Erp.JobHead jh
         INNER JOIN Erp.JobOper jo 
             ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
         LEFT JOIN Erp.JobOper_UD joud
             ON jo.SysRowID = joud.ForeignSysRowID
+        -- Get actual scheduled resource from ResourceTimeUsed
+        OUTER APPLY (
+            SELECT TOP 1 ResourceID 
+            FROM Erp.ResourceTimeUsed 
+            WHERE Company = jo.Company 
+              AND JobNum = jo.JobNum 
+              AND AssemblySeq = jo.AssemblySeq 
+              AND OprSeq = jo.OprSeq
+        ) rtu
+        -- Get CapabilityID from JobOpDtl (scheduling option)
+        OUTER APPLY (
+            SELECT TOP 1 CapabilityID 
+            FROM Erp.JobOpDtl 
+            WHERE Company = jo.Company 
+              AND JobNum = jo.JobNum 
+              AND AssemblySeq = jo.AssemblySeq 
+              AND OprSeq = jo.OprSeq
+        ) jod
         INNER JOIN PriorOpQty poq
             ON jo.Company = poq.Company 
             AND jo.JobNum = poq.JobNum 
@@ -762,6 +952,98 @@ def get_jobs_for_workcell(workcell_id):
     """
     
     return sql_query(query, params)
+
+
+def get_billet_summary():
+    """
+    Get billet demand summary for the Burn dashboard.
+    
+    Aggregates materials from Die workcell jobs (DIEGRIND, DRILLDIE, TURNDIE)
+    grouped by PartNum, showing:
+    - OnHand: Current inventory
+    - LateNeed: Sum of RequiredQty where job StartDate <= today
+    - FutureNeed: Sum of RequiredQty where job StartDate > today  
+    - TotalDemand: Total demand from PartQty
+    """
+    query = """
+        WITH DieMaterials AS (
+            -- Get materials from Die workcell operations
+            SELECT 
+                jm.PartNum,
+                jm.RequiredQty,
+                jh.StartDate
+            FROM Erp.JobMtl jm
+            INNER JOIN Erp.JobOper jo ON jm.Company = jo.Company 
+                AND jm.JobNum = jo.JobNum 
+                AND jm.AssemblySeq = jo.AssemblySeq
+                AND jm.RelatedOperation = jo.OprSeq
+            INNER JOIN Erp.JobHead jh ON jo.Company = jh.Company 
+                AND jo.JobNum = jh.JobNum
+            WHERE jh.JobComplete = 0
+              AND jh.JobReleased = 1
+              AND jo.OpComplete = 0
+              AND jo.OpCode IN ('DIEGRIND', 'DRILLDIE', 'TURNDIE')
+              AND jm.RequiredQty > 0
+        ),
+        MaterialSummary AS (
+            -- Aggregate by PartNum
+            SELECT 
+                PartNum,
+                SUM(CASE WHEN StartDate <= CAST(GETDATE() AS DATE) THEN RequiredQty ELSE 0 END) AS LateNeed,
+                SUM(CASE WHEN StartDate > CAST(GETDATE() AS DATE) THEN RequiredQty ELSE 0 END) AS FutureNeed
+            FROM DieMaterials
+            GROUP BY PartNum
+        )
+        SELECT 
+            ms.PartNum,
+            REPLACE(p.PartDescription, ' - die billet ungrooved', '') AS PartDescription,
+            ISNULL(pq.OnHandQty, 0) AS OnHand,
+            ms.LateNeed,
+            ms.FutureNeed,
+            ISNULL(pq.TotalDemand, 0) AS TotalDemand
+        FROM MaterialSummary ms
+        LEFT JOIN Erp.Part p ON ms.PartNum = p.PartNum
+        LEFT JOIN (
+            SELECT PartNum, SUM(OnHandQty) AS OnHandQty, SUM(DemandQty) AS TotalDemand
+            FROM Erp.PartQty
+            GROUP BY PartNum
+        ) pq ON ms.PartNum = pq.PartNum
+        ORDER BY p.PartDescription, ms.PartNum
+    """
+    
+    return sql_query(query)
+
+
+def search_parts(search_term):
+    """
+    Search for parts by part number or description.
+    Returns top 20 matches for Kanban search.
+    Only returns non-obsolete, stocked parts.
+    """
+    query = """
+        SELECT TOP 20
+            p.PartNum,
+            p.PartDescription,
+            ISNULL(pq.OnHandQty, 0) AS OnHand
+        FROM Erp.Part p
+        LEFT JOIN (
+            SELECT PartNum, SUM(OnHandQty) AS OnHandQty
+            FROM Erp.PartQty
+            GROUP BY PartNum
+        ) pq ON p.PartNum = pq.PartNum
+        WHERE (p.PartNum LIKE :search_pattern
+               OR p.PartDescription LIKE :search_pattern)
+          AND p.InActive = 0
+          AND p.TypeCode = 'M'
+        ORDER BY 
+            CASE WHEN p.PartNum LIKE :exact_pattern THEN 0 ELSE 1 END,
+            p.PartNum
+    """
+    
+    return sql_query(query, {
+        'search_pattern': f'%{search_term}%',
+        'exact_pattern': f'{search_term}%'
+    })
 
 
 def get_job_operations(job_num):
@@ -915,7 +1197,11 @@ def get_active_labor_details(job_nums_with_ops):
     where_clause = ' OR '.join(conditions)
     
     query = f"""
-        SELECT jh.JobNum, jh.PartNum, p.PartDescription, jh.ProdQty,
+        SELECT jh.JobNum,
+               -- Use JobAsmbl part for sub-assemblies, JobHead part for asm 0
+               CASE WHEN jo.AssemblySeq > 0 THEN ja.PartNum ELSE jh.PartNum END AS PartNum,
+               CASE WHEN jo.AssemblySeq > 0 THEN pa.PartDescription ELSE p.PartDescription END AS PartDescription,
+               CASE WHEN jo.AssemblySeq > 0 THEN ja.RequiredQty ELSE jh.ProdQty END AS ProdQty,
                jo.AssemblySeq, jo.OprSeq, jo.OpCode, jo.QtyCompleted,
                -- Get qty completed from prior non-backflush operation
                (SELECT TOP 1 jo_prior.QtyCompleted
@@ -936,6 +1222,8 @@ def get_active_labor_details(job_nums_with_ops):
         FROM Erp.JobHead jh
         JOIN Erp.JobOper jo ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
         LEFT JOIN Erp.Part p ON jh.Company = p.Company AND jh.PartNum = p.PartNum
+        LEFT JOIN Erp.JobAsmbl ja ON jo.Company = ja.Company AND jo.JobNum = ja.JobNum AND jo.AssemblySeq = ja.AssemblySeq
+        LEFT JOIN Erp.Part pa ON ja.Company = pa.Company AND ja.PartNum = pa.PartNum
         WHERE ({where_clause})
     """
     
@@ -969,3 +1257,91 @@ def get_active_labor_details(job_nums_with_ops):
         }
     
     return details_map
+
+
+def get_last_kanban_receipt(part_num):
+    """
+    Get the last inventory receipt for a part number.
+    Used to prevent double-entry on Kanban receipts.
+    Looks for MFG-STK transactions (manufactured to stock).
+    """
+    query = """
+        SELECT TOP 1
+            pt.TranQty,
+            CONVERT(VARCHAR(10), pt.TranDate, 23) AS TranDate,
+            pt.EntryPerson,
+            e.Name AS EmployeeName,
+            pt.TranNum,
+            pt.TranType
+        FROM Erp.PartTran pt
+        LEFT JOIN Erp.EmpBasic e ON pt.Company = e.Company AND pt.EntryPerson = e.EmpID
+        WHERE pt.PartNum = :part_num
+          AND pt.TranType = 'MFG-STK'
+          AND pt.TranQty > 0
+        ORDER BY pt.TranDate DESC, pt.TranNum DESC
+    """
+    result = sql_query(query, {'part_num': part_num})
+    return result[0] if result else None
+
+
+def get_insert_summary():
+    """
+    Get Gen 3 insert demand summary for the Inserts dashboard.
+    
+    Shows insert parts with:
+    - OnHand: Current inventory
+    - InProd: Inserts needed for die set jobs in process (Asm 1 Op 10 complete)
+    - TotalNeed: Overall demand from PartQty.DemandQty
+    - Shortage calculations for both in-prod and total
+    
+    Die sets need 2 inserts each, matched by CommercialSize1.
+    """
+    query = """
+        WITH InProdNeed AS (
+            -- Die set jobs in process (Assembly 1 Op 10 complete)
+            -- Each die set needs 2 inserts, matched by CommercialSize1
+            SELECT 
+                p.CommercialSize1,
+                SUM((jh.ProdQty - jh.QtyCompleted) * 2) AS InProdQty
+            FROM Erp.JobHead jh
+            INNER JOIN Erp.Part p ON jh.Company = p.Company AND jh.PartNum = p.PartNum
+            INNER JOIN Erp.JobOper jo ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
+            WHERE jh.JobClosed = 0
+              AND jh.JobComplete = 0
+              AND jh.PartDescription LIKE '%die set%'
+              AND p.CommercialSize1 > '0'
+              AND jo.AssemblySeq = 1
+              AND jo.OprSeq = 10
+              AND jo.OpComplete = 1
+            GROUP BY p.CommercialSize1
+        ),
+        InsertParts AS (
+            -- Gen 3 insert parts with inventory
+            SELECT 
+                p.PartNum,
+                p.PartDescription,
+                p.CommercialSize1,
+                ISNULL(pq.OnHandQty, 0) AS OnHand,
+                ISNULL(pq.DemandQty, 0) AS TotalNeed
+            FROM Erp.Part p
+            LEFT JOIN (
+                SELECT PartNum, SUM(OnHandQty) AS OnHandQty, SUM(DemandQty) AS DemandQty
+                FROM Erp.PartQty
+                GROUP BY PartNum
+            ) pq ON p.PartNum = pq.PartNum
+            WHERE p.PartDescription LIKE '%Gen 3%'
+              AND p.CommercialSize1 > '0'
+        )
+        SELECT 
+            ip.PartNum,
+            ip.PartDescription,
+            ip.OnHand,
+            ISNULL(ipn.InProdQty, 0) AS InProd,
+            ip.TotalNeed
+        FROM InsertParts ip
+        LEFT JOIN InProdNeed ipn ON ip.CommercialSize1 = ipn.CommercialSize1
+        WHERE ip.TotalNeed > 0 OR ISNULL(ipn.InProdQty, 0) > 0
+        ORDER BY ip.PartDescription
+    """
+    
+    return sql_query(query)

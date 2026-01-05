@@ -1,7 +1,8 @@
 # app/routes/views.py
-# Version 5.0 — 2026-01-02
+# Version 5.1 — 2026-01-04
 #
 # Routes for The Queue web interface
+# Added Burn dashboard and Kanban receipt routes
 
 print("========== VIEWS.PY LOADED ==========")
 
@@ -10,7 +11,7 @@ from flask import Blueprint, render_template, jsonify, request, send_file, abort
 from app.logic.queries import (
     get_workcells, get_jobs_for_workcell, get_jobs_with_details, get_job_materials, 
     get_job_operations, get_job_header, get_workcell_config,
-    get_last_checkin, get_materials_for_workcell, WORKCELLS
+    get_last_checkin, get_materials_for_workcell, get_billet_summary, WORKCELLS
 )
 from app.config import translate_pdf_path
 
@@ -19,9 +20,31 @@ views = Blueprint('views', __name__)
 
 @views.route('/')
 def index():
-    """Home page - show work cell buttons."""
-    workcells = get_workcells()
-    return render_template('index.html', workcells=workcells)
+    """Home page - show work cell buttons grouped by area."""
+    all_workcells = {wc['id']: wc for wc in get_workcells()}
+    
+    # Define groups and their workcell IDs
+    groups = [
+        ('Laser / Press', ['LASER', 'PRESS']),
+        ('Saw / Weld / Burn', ['SAW', 'WELD', 'BURN']),
+        ('Machining', ['MILL-LATHE', 'DIES', 'FBS', 'INSERTS']),
+        ('Powder', ['POWDER', 'BLACKENING']),
+        ('Shipping', ['SHIPPING']),
+        ('Assembly', ['ASM-M50', 'ASM-MAD', 'CRATING', 'WIRE']),
+        ('Office', ['OFFICE']),
+    ]
+    
+    # Build grouped workcells list
+    grouped_workcells = []
+    for group_name, wc_ids in groups:
+        workcells_in_group = [all_workcells[wc_id] for wc_id in wc_ids if wc_id in all_workcells]
+        if workcells_in_group:
+            grouped_workcells.append({
+                'name': group_name,
+                'workcells': workcells_in_group
+            })
+    
+    return render_template('index.html', groups=grouped_workcells)
 
 
 @views.route('/queue/<workcell_id>')
@@ -33,6 +56,69 @@ def queue(workcell_id):
     
     workcell_config = get_workcell_config(workcell_id)
     workcell_name = workcell_config['name']
+    
+    # Check for dashboard type - serve different template
+    dashboard_type = workcell_config.get('dashboard_type')
+    
+    if dashboard_type == 'inserts':
+        # Inserts dashboard - show Gen 3 insert demand summary
+        from app.logic.queries import get_insert_summary
+        inserts = get_insert_summary()
+        workcells = get_workcells()  # For the dropdown
+        
+        # Calculate shortage fields for each insert
+        for i in inserts:
+            on_hand = i.get('OnHand', 0) or 0
+            in_prod = i.get('InProd', 0) or 0
+            total_need = i.get('TotalNeed', 0) or 0
+            
+            # In-prod shortage
+            i['ShortProd'] = max(0, in_prod - on_hand)
+            i['SetsProd'] = int((i['ShortProd'] + 3) // 4) if i['ShortProd'] > 0 else 0
+            
+            # Total shortage
+            i['ShortTotal'] = max(0, total_need - on_hand)
+            i['SetsTotal'] = int((i['ShortTotal'] + 3) // 4) if i['ShortTotal'] > 0 else 0
+        
+        return render_template(
+            'inserts.html',
+            workcell_id=workcell_id,
+            workcell_name=workcell_name,
+            workcell_config=workcell_config,
+            inserts=inserts,
+            workcells=workcells
+        )
+    
+    if dashboard_type == 'burn':
+        # Burn dashboard - show billet summary
+        billets = get_billet_summary()
+        workcells = get_workcells()  # For the dropdown
+        
+        # Calculate shortage fields for each billet
+        for b in billets:
+            on_hand = b.get('OnHand', 0) or 0
+            late_need = b.get('LateNeed', 0) or 0
+            future_need = b.get('FutureNeed', 0) or 0
+            
+            # Total demand from die jobs
+            b['TotalDemand'] = late_need + future_need
+            
+            # On-hand first covers late, remainder covers future
+            remaining_after_late = max(0, on_hand - late_need)
+            b['ShortLate'] = max(0, late_need - on_hand)
+            b['ShortFuture'] = max(0, future_need - remaining_after_late)
+            b['Shortage'] = b['ShortLate'] + b['ShortFuture']
+        
+        return render_template(
+            'burn.html',
+            workcell_id=workcell_id,
+            workcell_name=workcell_name,
+            workcell_config=workcell_config,
+            billets=billets,
+            workcells=workcells
+        )
+    
+    # Standard queue view
     jobs = get_jobs_with_details(workcell_id)
     workcells = get_workcells()  # For the dropdown
     
@@ -96,6 +182,50 @@ def api_jobs_by_color(workcell_id, color):
     return jsonify(job_keys)
 
 
+@views.route('/api/resources/<workcell_id>')
+def api_resources(workcell_id):
+    """API endpoint for resource list - loaded async for Mill-Lathe."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_resources_for_workcell
+    resources = get_resources_for_workcell(workcell_id)
+    return jsonify(resources)
+
+
+@views.route('/api/jobs_by_resource/<workcell_id>/<resource_id>')
+def api_jobs_by_resource(workcell_id, resource_id):
+    """API endpoint to get job keys that use a specific resource."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_jobs_using_resource
+    job_keys = get_jobs_using_resource(workcell_id, resource_id)
+    return jsonify(job_keys)
+
+
+@views.route('/api/capabilities/<workcell_id>')
+def api_capabilities(workcell_id):
+    """API endpoint for capability list - loaded async for Mill-Lathe."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_capabilities_for_workcell
+    capabilities = get_capabilities_for_workcell(workcell_id)
+    return jsonify(capabilities)
+
+
+@views.route('/api/jobs_by_capability/<workcell_id>/<capability_id>')
+def api_jobs_by_capability(workcell_id, capability_id):
+    """API endpoint to get job keys that use a specific capability."""
+    if workcell_id not in WORKCELLS:
+        return jsonify({'error': 'Work cell not found'}), 404
+    
+    from app.logic.queries import get_jobs_using_capability
+    job_keys = get_jobs_using_capability(workcell_id, capability_id)
+    return jsonify(job_keys)
+
+
 @views.route('/api/queue/<workcell_id>')
 def api_queue(workcell_id):
     """API endpoint for auto-refresh."""
@@ -136,17 +266,26 @@ def api_test_epicor():
     from requests.auth import HTTPBasicAuth
     from app.config import EPICOR_API_URL, EPICOR_API_KEY, EPICOR_USERNAME, EPICOR_PASSWORD
     
+    # Debug: show what's loaded (masked)
+    debug_info = {
+        'api_url': EPICOR_API_URL,
+        'api_key_len': len(EPICOR_API_KEY) if EPICOR_API_KEY else 0,
+        'username': EPICOR_USERNAME,
+        'password_len': len(EPICOR_PASSWORD) if EPICOR_PASSWORD else 0
+    }
+    
     if not EPICOR_API_URL or not EPICOR_API_KEY:
-        return jsonify({'error': 'Epicor API not configured'}), 500
+        return jsonify({'error': 'Epicor API not configured', 'debug': debug_info}), 500
     
     if not EPICOR_USERNAME or not EPICOR_PASSWORD:
-        return jsonify({'error': 'Epicor credentials not configured'}), 500
+        return jsonify({'error': 'Epicor credentials not configured', 'debug': debug_info}), 500
     
     try:
         # v1 format: /api/v1/Erp.BO.EmpBasicSvc/EmpBasics
         url = f"{EPICOR_API_URL}/Erp.BO.EmpBasicSvc/EmpBasics"
         headers = {
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'x-api-key': EPICOR_API_KEY
         }
         
         # Basic Auth (Epicor user) + API Key
@@ -157,16 +296,18 @@ def api_test_epicor():
         if response.ok:
             return jsonify({
                 'status': 'connected',
-                'data': response.json() if response.text else 'empty'
+                'debug': debug_info,
+                'data': 'success'
             })
         else:
             return jsonify({
                 'status': 'error',
                 'code': response.status_code,
-                'message': response.text[:500]
+                'message': response.text[:500],
+                'debug': debug_info
             }), response.status_code
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e), 'debug': debug_info}), 500
 
 
 @views.route('/api/last_checkin/<part_num>')
@@ -260,7 +401,8 @@ def api_labor_end():
         "laborHedSeq": 12345,
         "laborDtlSeq": 1,
         "laborQty": 10,
-        "scrapQty": 0
+        "scrapQty": 0,
+        "complete": false  // Optional - if true, marks operation complete
     }
     """
     from app.logic.epicor_api import end_activity
@@ -274,11 +416,12 @@ def api_labor_end():
     labor_dtl_seq = data.get('laborDtlSeq')
     labor_qty = data.get('laborQty', 0)
     scrap_qty = data.get('scrapQty', 0)
+    complete = data.get('complete', False)
     
     if not all([emp_id, labor_hed_seq, labor_dtl_seq is not None]):
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
     
-    result = end_activity(emp_id, labor_hed_seq, labor_dtl_seq, labor_qty, scrap_qty)
+    result = end_activity(emp_id, labor_hed_seq, labor_dtl_seq, labor_qty, scrap_qty, complete)
     
     if result['success']:
         return jsonify(result)
@@ -373,3 +516,120 @@ def api_labor_report():
         return jsonify(result)
     else:
         return jsonify(result), 500
+
+
+@views.route('/api/job/update-quantity', methods=['POST'])
+def api_job_update_quantity():
+    """
+    Update job production quantity.
+    Used for first operations to set the job quantity based on actual production.
+    
+    POST body: {
+        "jobNum": "JOB001",
+        "newQty": 100
+    }
+    """
+    from app.logic.epicor_api import update_job_quantity
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+    
+    job_num = data.get('jobNum')
+    new_qty = data.get('newQty')
+    
+    if not job_num or new_qty is None:
+        return jsonify({'success': False, 'error': 'Missing jobNum or newQty'}), 400
+    
+    result = update_job_quantity(job_num, new_qty)
+    
+    if result['success']:
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
+
+
+# ============================================================================
+# Kanban Receipt Routes
+# ============================================================================
+
+print("========== KANBAN ROUTES LOADED ==========")
+
+@views.route('/api/kanban/submit', methods=['GET', 'POST'])
+def api_kanban_submit():
+    """
+    Submit a Kanban Receipt - creates job, reports qty, closes job, receives to stock.
+    
+    POST body: {
+        "empId": "123",
+        "partNum": "BILLET-2.5",
+        "quantity": 10
+    }
+    """
+    print("[api_kanban_submit] Route called", flush=True)
+    print(f"[api_kanban_submit] Method: {request.method}", flush=True)
+    
+    # Allow GET for testing
+    if request.method == 'GET':
+        return jsonify({'status': 'ok', 'message': 'Kanban endpoint is working. Use POST to submit.'})
+    
+    try:
+        from app.logic.epicor_api import kanban_receipt
+        print("[api_kanban_submit] Import successful", flush=True)
+        
+        data = request.get_json()
+        print(f"[api_kanban_submit] Data: {data}", flush=True)
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        emp_id = data.get('empId')
+        part_num = data.get('partNum')
+        quantity = data.get('quantity')
+        
+        if not all([emp_id, part_num, quantity]):
+            return jsonify({'success': False, 'error': 'Missing required fields (empId, partNum, quantity)'}), 400
+        
+        if quantity < 1:
+            return jsonify({'success': False, 'error': 'Quantity must be at least 1'}), 400
+        
+        print(f"[api_kanban_submit] Calling kanban_receipt({emp_id}, {part_num}, {quantity})", flush=True)
+        result = kanban_receipt(emp_id, part_num, quantity)
+        print(f"[api_kanban_submit] Result: {result}", flush=True)
+        
+        if result.get('success'):
+            return jsonify(result)
+        else:
+            return jsonify(result), 400  # Use 400 instead of 500 for business errors
+    
+    except Exception as e:
+        import traceback
+        print(f"[api_kanban_submit] Exception: {e}", flush=True)
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@views.route('/api/kanban/last/<part_num>')
+def api_kanban_last(part_num):
+    """API endpoint for last Kanban receipt on a part number."""
+    from app.logic.queries import get_last_kanban_receipt
+    receipt = get_last_kanban_receipt(part_num)
+    return jsonify(receipt)
+
+
+@views.route('/api/parts/search')
+def api_parts_search():
+    """Search for parts by part number or description."""
+    from app.logic.queries import search_parts
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify([])
+    parts = search_parts(query)
+    return jsonify(parts)
+
+
+@views.route('/api/billet_summary')
+def api_billet_summary():
+    """API endpoint for billet summary - for async refresh."""
+    billets = get_billet_summary()
+    return jsonify(billets)
