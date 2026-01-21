@@ -1819,6 +1819,22 @@ body {
     margin: 0 0.25rem;
 }
 
+.mass-end-total {
+    margin-left: auto;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.mass-end-total span {
+    color: var(--accent);
+    font-size: 1.2rem;
+}
+
 .quick-fill-input {
     width: 60px;
     padding: 0.4rem 0.5rem;
@@ -1929,6 +1945,94 @@ body {
 }
 
 .mass-end-modal-content .labor-modal-btn.cancel-btn:hover {
+    background: var(--bg-hover);
+}
+
+/* ============================================================================
+   QUANTITY CONFIRMATION MODAL
+   ============================================================================ */
+
+.qty-confirm-modal-content {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    width: 90%;
+    max-width: 450px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.qty-confirm-header {
+    margin-bottom: 1rem;
+}
+
+.qty-confirm-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.qty-confirm-body {
+    margin-bottom: 1.5rem;
+}
+
+.qty-confirm-body p {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.qty-confirm-details {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.qty-confirm-details .confirm-qty {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+}
+
+.qty-confirm-details .confirm-job {
+    color: var(--text-muted);
+}
+
+.qty-confirm-details .confirm-part {
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.qty-confirm-details .confirm-parts-list {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.qty-confirm-details .confirm-line {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 0.25rem 0;
+}
+
+.qty-confirm-modal-content .labor-modal-buttons {
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+}
+
+.qty-confirm-modal-content .labor-modal-btn.cancel-btn {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.qty-confirm-modal-content .labor-modal-btn.cancel-btn:hover {
     background: var(--bg-hover);
 }
 

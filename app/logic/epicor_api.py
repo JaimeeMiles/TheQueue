@@ -280,7 +280,8 @@ def calculate_labor_hours(job_num, asm_seq, opr_seq, total_qty):
         print(f"[calculate_labor_hours] ProdStandard={prod_std}, StdFormat={std_format}, Qty={total_qty}", file=sys.stderr, flush=True)
 
         if prod_std == 0:
-            return None
+            print(f"[calculate_labor_hours] ProdStandard is 0, returning 0 hours", file=sys.stderr, flush=True)
+            return 0.0
 
         hours = 0.0
         if std_format == 'HP':  # Hours per Piece

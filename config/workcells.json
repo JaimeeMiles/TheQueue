@@ -42,7 +42,8 @@
       "columns": ["startdate", "operation", "job", "part", "description", "left", "available", "mtl"],
       "detail_fields": ["qty", "done", "left", "notes", "nextlocation", "ophours", "cycle", "last_checkin"],
       "material_limit": null,
-      "show_viewpdf": true
+      "show_viewpdf": true,
+      "confirm_end_qty": true
     },
     "CASTING": {
       "name": "Casting",
@@ -76,7 +77,8 @@
       "material_limit": null,
       "show_viewpdf": true,
       "filter_by_resource": true,
-      "filter_by_capability": true
+      "filter_by_capability": true,
+      "confirm_end_qty": true
     },
     "POWDER": {
       "name": "Powder Coat",

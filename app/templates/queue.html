@@ -286,6 +286,9 @@
                 <input type="number" id="quick-fill-custom" class="quick-fill-input" min="1" step="1" placeholder="#">
                 <button type="button" class="quick-fill-btn" onclick="quickFillCustom()">Fill</button>
             </div>
+            <div class="mass-end-total">
+                Total: <span id="mass-end-total-qty">0</span>
+            </div>
         </div>
         
         <div id="mass-end-warning" class="qty-warning" style="display: none;"></div>
@@ -324,6 +327,25 @@
     </div>
 </div>
 
+<!-- Quantity Confirmation Modal -->
+{% if workcell_config.confirm_end_qty %}
+<div id="qty-confirm-modal" class="labor-modal hidden">
+    <div class="qty-confirm-modal-content">
+        <div class="qty-confirm-header">
+            <h3>Confirm Quantity</h3>
+        </div>
+        <div class="qty-confirm-body">
+            <p id="qty-confirm-message">Are you sure you want to enter this quantity?</p>
+            <div id="qty-confirm-details" class="qty-confirm-details"></div>
+        </div>
+        <div class="labor-modal-buttons">
+            <button id="qty-confirm-cancel" class="labor-modal-btn cancel-btn">Cancel</button>
+            <button id="qty-confirm-yes" class="labor-modal-btn submit-btn">Yes, Submit</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <p class="job-count">
     Showing <span id="visible-count">{{ jobs|length }}</span> of {{ jobs|length }} job(s)
     <span id="pagination-controls" class="pagination-controls"></span>
@@ -358,8 +380,8 @@ let currentPage = 1;
 let filteredRows = [];  // Rows that pass current filters
 let allJobRows = [];    // All original rows (preserved reference)
 
-// Current filters
-let currentOpFilter = 'all';
+// Current filters - restore op filter from localStorage if available
+let currentOpFilter = localStorage.getItem('queue_opFilter_' + workcellId) || 'all';
 let currentMaterialFilter = 'all';
 let currentColorFilter = 'all';
 let currentResourceFilter = 'all';
@@ -385,9 +407,24 @@ document.querySelectorAll('.op-filter-btn').forEach(btn => {
         document.querySelectorAll('.op-filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentOpFilter = btn.dataset.op;
+        // Save to localStorage for persistence across page reloads
+        localStorage.setItem('queue_opFilter_' + workcellId, currentOpFilter);
         applyFilters();
     });
 });
+
+// Restore active state on op filter button from localStorage
+if (currentOpFilter !== 'all') {
+    const savedBtn = document.querySelector(`.op-filter-btn[data-op="${currentOpFilter}"]`);
+    if (savedBtn) {
+        document.querySelectorAll('.op-filter-btn').forEach(b => b.classList.remove('active'));
+        savedBtn.classList.add('active');
+    } else {
+        // Saved filter no longer exists, reset to all
+        currentOpFilter = 'all';
+        localStorage.removeItem('queue_opFilter_' + workcellId);
+    }
+}
 
 // --- MATERIAL FILTER DROPDOWN ---
 const materialSelect = document.getElementById('material-select');
@@ -1530,24 +1567,26 @@ function showSingleEndModal() {
     const asmSeq = currentExpandedRow.dataset.asm;
     const oprSeq = currentExpandedRow.dataset.opr;
     const partNum = currentExpandedRow.dataset.partnum;
+    const partDesc = currentExpandedRow.querySelector('.col-desc')?.textContent?.trim() || '';
     const details = jobDetails[jobKey] || {};
     const operations = details.operations || [];
     const materials = details.materials || [];
-    
+
     pendingSingleEnd = {
         empId: emp.id,
         laborHedSeq: labor.LaborHedSeq,
         laborDtlSeq: labor.LaborDtlSeq,
         jobKey: jobKey,
-        jobNum: jobNum
+        jobNum: jobNum,
+        partNum: partNum,
+        partDesc: partDesc
     };
     
     // Title
     document.getElementById('single-end-title').textContent = `End Activity - Job ${jobNum}`;
-    
+
     // Part info
-    const desc = currentExpandedRow.querySelector('.col-desc')?.textContent?.trim() || '';
-    document.getElementById('single-end-part-info').innerHTML = `<strong>${partNum}</strong>${desc ? ' - ' + desc : ''}`;
+    document.getElementById('single-end-part-info').innerHTML = `<strong>${partNum}</strong>${partDesc ? ' - ' + partDesc : ''}`;
     
     // PDF button
     const pdfBtn = document.getElementById('single-end-pdf-btn');
@@ -1776,13 +1815,9 @@ async function submitSingleEnd() {
         const result = await response.json();
         
         if (result.success) {
-            await loadActiveLabor();
             hideSingleEndModal();
-            updateStartEndButtons();
-            // Reload page to reflect qty changes
-            if (setJobQty) {
-                location.reload();
-            }
+            // Always reload to refresh the queue after ending
+            location.reload();
         } else {
             document.getElementById('single-end-error').textContent = result.error;
         }
@@ -1797,9 +1832,41 @@ async function submitSingleEnd() {
 // Single End Modal event handlers
 document.getElementById('single-end-close')?.addEventListener('click', hideSingleEndModal);
 document.getElementById('single-end-cancel')?.addEventListener('click', hideSingleEndModal);
-document.getElementById('single-end-submit')?.addEventListener('click', submitSingleEnd);
+document.getElementById('single-end-submit')?.addEventListener('click', () => {
+    if (confirmEndQty) {
+        const qty = parseFloat(document.getElementById('single-end-qty').value) || 0;
+        const jobNum = pendingSingleEnd?.jobNum || 'Unknown';
+        const partNum = pendingSingleEnd?.partNum || '';
+        const partDesc = pendingSingleEnd?.partDesc || '';
+        showQtyConfirmModal(
+            'Are you sure you want to enter this quantity?',
+            `<div class="confirm-qty">${qty} pieces</div>
+             <div class="confirm-part"><strong>${partNum}</strong>${partDesc ? ' - ' + partDesc : ''}</div>
+             <div class="confirm-job">Job: ${jobNum}</div>`,
+            submitSingleEnd
+        );
+    } else {
+        submitSingleEnd();
+    }
+});
 document.getElementById('single-end-qty')?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') submitSingleEnd();
+    if (e.key === 'Enter') {
+        if (confirmEndQty) {
+            const qty = parseFloat(document.getElementById('single-end-qty').value) || 0;
+            const jobNum = pendingSingleEnd?.jobNum || 'Unknown';
+            const partNum = pendingSingleEnd?.partNum || '';
+            const partDesc = pendingSingleEnd?.partDesc || '';
+            showQtyConfirmModal(
+                'Are you sure you want to enter this quantity?',
+                `<div class="confirm-qty">${qty} pieces</div>
+                 <div class="confirm-part"><strong>${partNum}</strong>${partDesc ? ' - ' + partDesc : ''}</div>
+                 <div class="confirm-job">Job: ${jobNum}</div>`,
+                submitSingleEnd
+            );
+        } else {
+            submitSingleEnd();
+        }
+    }
 });
 document.getElementById('single-end-qty')?.addEventListener('input', validateSingleEndQty);
 
@@ -1874,7 +1941,12 @@ function showMassEndModal() {
     tbody.querySelectorAll('.mass-end-qty').forEach(input => {
         input.addEventListener('input', validateMassEndRow);
     });
-    
+
+    // Add checkbox change listeners to update total
+    tbody.querySelectorAll('.mass-end-check').forEach(cb => {
+        cb.addEventListener('change', updateMassEndTotal);
+    });
+
     // When Upd Qty is checked, auto-check Done
     tbody.querySelectorAll('.mass-end-upd-qty').forEach(cb => {
         cb.addEventListener('change', (e) => {
@@ -1888,7 +1960,8 @@ function showMassEndModal() {
     document.getElementById('mass-end-select-all').checked = true;
     document.getElementById('mass-end-warning').style.display = 'none';
     document.getElementById('mass-end-error').textContent = '';
-    
+    updateMassEndTotal();
+
     massEndModal.classList.remove('hidden');
 }
 
@@ -1897,6 +1970,20 @@ function validateMassEndRow(e) {
     const row = e.target.closest('tr');
     updateRowDoneCheckbox(row);
     validateMassEndWarnings();
+    updateMassEndTotal();
+}
+
+// Update total quantity for checked rows
+function updateMassEndTotal() {
+    let total = 0;
+    document.querySelectorAll('#mass-end-tbody tr').forEach(row => {
+        const checkbox = row.querySelector('.mass-end-check');
+        if (checkbox && checkbox.checked) {
+            const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
+            total += qty;
+        }
+    });
+    document.getElementById('mass-end-total-qty').textContent = total;
 }
 
 // Check all rows and show warning if any qty > available
@@ -1930,14 +2017,15 @@ function quickFill(value) {
     rows.forEach(row => {
         const checked = row.querySelector('.mass-end-check').checked;
         if (!checked) return;
-        
+
         const qtyInput = row.querySelector('.mass-end-qty');
         qtyInput.value = value;
-        
+
         // Trigger validation for this row
         updateRowDoneCheckbox(row);
     });
     validateMassEndWarnings();
+    updateMassEndTotal();
 }
 
 function quickFillLeft() {
@@ -1945,15 +2033,16 @@ function quickFillLeft() {
     rows.forEach(row => {
         const checked = row.querySelector('.mass-end-check').checked;
         if (!checked) return;
-        
+
         const left = parseFloat(row.dataset.left) || 0;
         const qtyInput = row.querySelector('.mass-end-qty');
         qtyInput.value = left;
-        
+
         // Trigger validation for this row
         updateRowDoneCheckbox(row);
     });
     validateMassEndWarnings();
+    updateMassEndTotal();
 }
 
 function quickFillCustom() {
@@ -2071,18 +2160,14 @@ async function submitMassEnd() {
         }
     }
     
-    await loadActiveLabor();
-    
     if (failed === 0) {
         hideMassEndModal();
-        updateStartEndButtons();
-        // Reload page to reflect qty changes if any were updated
-        if (anyQtyUpdated) {
-            location.reload();
-        }
+        // Always reload to refresh the queue after ending
+        location.reload();
     } else {
+        // Some failed - reload the modal with updated data
+        await loadActiveLabor();
         document.getElementById('mass-end-error').textContent = `Ended ${success}, failed ${failed}`;
-        // Refresh the table
         showMassEndModal();
     }
     
@@ -2093,14 +2178,86 @@ async function submitMassEnd() {
 // Mass End Modal event handlers
 document.getElementById('mass-end-close')?.addEventListener('click', hideMassEndModal);
 document.getElementById('mass-end-cancel')?.addEventListener('click', hideMassEndModal);
-document.getElementById('mass-end-submit')?.addEventListener('click', submitMassEnd);
+document.getElementById('mass-end-submit')?.addEventListener('click', () => {
+    if (confirmEndQty) {
+        // Calculate total quantity and build parts list from checked rows
+        const rows = document.querySelectorAll('#mass-end-tbody tr');
+        let totalQty = 0;
+        let jobCount = 0;
+        let partsHtml = '';
+        rows.forEach(row => {
+            const checked = row.querySelector('.mass-end-check').checked;
+            if (checked) {
+                const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
+                const partNum = row.querySelector('td:nth-child(3)')?.textContent || '';
+                const partDesc = row.querySelector('td:nth-child(4)')?.textContent || '';
+                totalQty += qty;
+                jobCount++;
+                if (qty > 0) {
+                    partsHtml += `<div class="confirm-line">${qty} × ${partNum}${partDesc ? ' - ' + partDesc : ''}</div>`;
+                }
+            }
+        });
+        showQtyConfirmModal(
+            'Are you sure you want to enter these quantities?',
+            `<div class="confirm-qty">${totalQty} pieces total</div>
+             <div class="confirm-job">${jobCount} job(s) selected</div>
+             ${partsHtml ? '<div class="confirm-parts-list">' + partsHtml + '</div>' : ''}`,
+            submitMassEnd
+        );
+    } else {
+        submitMassEnd();
+    }
+});
 document.getElementById('mass-end-select-all')?.addEventListener('change', (e) => {
     document.querySelectorAll('.mass-end-check').forEach(cb => cb.checked = e.target.checked);
+    updateMassEndTotal();
 });
 
 // Enter key on custom fill input
 document.getElementById('quick-fill-custom')?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') quickFillCustom();
+});
+
+// ============================================================================
+// QUANTITY CONFIRMATION DIALOG
+// ============================================================================
+
+const confirmEndQty = workcellConfig.confirm_end_qty || false;
+const qtyConfirmModal = document.getElementById('qty-confirm-modal');
+let pendingConfirmAction = null;  // Callback to execute after confirmation
+
+function showQtyConfirmModal(message, detailsHtml, onConfirm) {
+    if (!qtyConfirmModal) return onConfirm();  // If modal doesn't exist, skip confirmation
+
+    document.getElementById('qty-confirm-message').textContent = message;
+    document.getElementById('qty-confirm-details').innerHTML = detailsHtml;
+    pendingConfirmAction = onConfirm;
+    qtyConfirmModal.classList.remove('hidden');
+}
+
+function hideQtyConfirmModal() {
+    if (qtyConfirmModal) {
+        qtyConfirmModal.classList.add('hidden');
+    }
+    pendingConfirmAction = null;
+}
+
+// Confirmation modal event handlers
+document.getElementById('qty-confirm-cancel')?.addEventListener('click', hideQtyConfirmModal);
+document.getElementById('qty-confirm-yes')?.addEventListener('click', () => {
+    const callback = pendingConfirmAction;  // Save callback before hiding clears it
+    hideQtyConfirmModal();
+    if (callback) {
+        callback();
+    }
+});
+
+// Close on escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && qtyConfirmModal && !qtyConfirmModal.classList.contains('hidden')) {
+        hideQtyConfirmModal();
+    }
 });
 
 // ============================================================================
