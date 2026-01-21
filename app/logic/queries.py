@@ -1,5 +1,8 @@
 # app/logic/queries.py
-# Version 5.1 — 2026-01-04
+# Version 5.3 — 2026-01-16
+# - Added detailed timing logging to identify performance bottlenecks
+# - Removed LastEntryDate from get_bulk_operations() for performance
+# - Added get_operation_last_entries() for on-demand loading
 #
 # SQL queries for The Queue
 # Uses OpCode-based work cell filtering
@@ -9,9 +12,18 @@
 
 import json
 import os
+import time
 from sqlalchemy import text
 from decimal import Decimal
 from app.config import get_engine
+
+# Timing flag - set to True to enable detailed query timing
+TIMING_ENABLED = True
+
+def log_timing(label, elapsed):
+    """Log timing if enabled."""
+    if TIMING_ENABLED:
+        print(f"[TIMING] {label}: {elapsed:.3f}s")
 
 # Load work cell configuration
 def load_workcells():
@@ -140,6 +152,14 @@ def get_bulk_operations(job_nums):
     Returns dict keyed by JobNum.
     Uses ResourceTimeUsed for actual scheduled ResourceID.
     Uses JobOpDtl for CapabilityID (scheduling option).
+    
+    For labor entry, we need ResourceGrpID and JCDept with fallback chain:
+    1. JobOpDtl.ResourceGrpID
+    2. Resource table lookup from JobOpDtl.ResourceID
+    3. Resource table lookup from ResourceTimeUsed.ResourceID
+    
+    NOTE: LastEntryDate removed for performance - LaborDtl lookup was causing
+    234K reads. Now loaded on-demand via get_operation_last_entries().
     """
     if not job_nums:
         return {}
@@ -150,33 +170,36 @@ def get_bulk_operations(job_nums):
     query = f"""
         SELECT jo.JobNum, jo.OprSeq, jo.OpCode, jo.OpDesc, jo.QtyCompleted, 
                CAST(jo.OpComplete AS INT) AS OpComplete, jo.ProdStandard, jo.AssemblySeq,
-               -- For LABOR ENTRY: ResourceGrpID from JobOpDtl with fallback
+               -- For LABOR ENTRY: ResourceGrpID with fallback chain
                COALESCE(
                    NULLIF(jod.ResourceGrpID, ''), 
-                   res_from_id.ResourceGrpID
+                   res_from_jod.ResourceGrpID,
+                   res_from_rtu.ResourceGrpID
                ) AS ResourceGrpID, 
-               -- For LABOR ENTRY: ResourceID from JobOpDtl with fallback
-               COALESCE(NULLIF(jod.ResourceID, ''), r.ResourceID) AS ResourceID,
-               -- For LABOR ENTRY: JCDept from ResourceGroup
-               COALESCE(rg.JCDept, rg_from_id.JCDept) AS JCDept,
+               -- For LABOR ENTRY: ResourceID with fallback chain
+               COALESCE(
+                   NULLIF(jod.ResourceID, ''), 
+                   r.ResourceID,
+                   rtu.ResourceID
+               ) AS ResourceID,
+               -- For LABOR ENTRY: JCDept from ResourceGroup with fallback chain
+               COALESCE(
+                   rg_from_jod_grp.JCDept, 
+                   rg_from_jod_res.JCDept,
+                   rg_from_rtu.JCDept
+               ) AS JCDept,
                -- For DISPLAY/FILTER: Scheduled resource from ResourceTimeUsed
                rtu.ResourceID AS ScheduledResourceID,
-               jod.CapabilityID,
-               CONVERT(VARCHAR(10), 
-                   (SELECT MAX(ld.ClockInDate) 
-                    FROM Erp.LaborDtl ld 
-                    WHERE ld.JobNum = jo.JobNum 
-                      AND ld.AssemblySeq = jo.AssemblySeq
-                      AND ld.OprSeq = jo.OprSeq 
-                      AND ld.LaborQty > 0), 23) AS LastEntryDate
+               jod.CapabilityID
         FROM Erp.JobOper jo
         LEFT JOIN Erp.JobOpDtl jod ON jo.Company = jod.Company 
             AND jo.JobNum = jod.JobNum 
             AND jo.AssemblySeq = jod.AssemblySeq 
             AND jo.OprSeq = jod.OprSeq
-        -- Get ResourceGroup from JobOpDtl.ResourceGrpID
-        LEFT JOIN Erp.ResourceGroup rg ON jod.Company = rg.Company
-            AND jod.ResourceGrpID = rg.ResourceGrpID
+        -- Get ResourceGroup directly from JobOpDtl.ResourceGrpID
+        LEFT JOIN Erp.ResourceGroup rg_from_jod_grp ON jod.Company = rg_from_jod_grp.Company
+            AND jod.ResourceGrpID = rg_from_jod_grp.ResourceGrpID
+            AND jod.ResourceGrpID IS NOT NULL AND jod.ResourceGrpID != ''
         -- Get default Resource from ResourceGroup (first location resource)
         OUTER APPLY (
             SELECT TOP 1 ResourceID 
@@ -185,12 +208,12 @@ def get_bulk_operations(job_nums):
               AND Location = 1
         ) r
         -- If JobOpDtl has ResourceID but no ResourceGrpID, look up the group from Resource table
-        LEFT JOIN Erp.Resource res_from_id ON jod.Company = res_from_id.Company
-            AND jod.ResourceID = res_from_id.ResourceID
+        LEFT JOIN Erp.Resource res_from_jod ON jod.Company = res_from_jod.Company
+            AND jod.ResourceID = res_from_jod.ResourceID
             AND (jod.ResourceGrpID IS NULL OR jod.ResourceGrpID = '')
-        LEFT JOIN Erp.ResourceGroup rg_from_id ON res_from_id.Company = rg_from_id.Company
-            AND res_from_id.ResourceGrpID = rg_from_id.ResourceGrpID
-        -- Get scheduled resource from ResourceTimeUsed (for display/filtering)
+        LEFT JOIN Erp.ResourceGroup rg_from_jod_res ON res_from_jod.Company = rg_from_jod_res.Company
+            AND res_from_jod.ResourceGrpID = rg_from_jod_res.ResourceGrpID
+        -- Get scheduled resource from ResourceTimeUsed (for display/filtering AND as final fallback)
         OUTER APPLY (
             SELECT TOP 1 ResourceID
             FROM Erp.ResourceTimeUsed 
@@ -199,6 +222,11 @@ def get_bulk_operations(job_nums):
               AND AssemblySeq = jo.AssemblySeq 
               AND OprSeq = jo.OprSeq
         ) rtu
+        -- Fallback: Get ResourceGrpID from Resource table using ResourceTimeUsed.ResourceID
+        LEFT JOIN Erp.Resource res_from_rtu ON jo.Company = res_from_rtu.Company
+            AND rtu.ResourceID = res_from_rtu.ResourceID
+        LEFT JOIN Erp.ResourceGroup rg_from_rtu ON res_from_rtu.Company = rg_from_rtu.Company
+            AND res_from_rtu.ResourceGrpID = rg_from_rtu.ResourceGrpID
         WHERE jo.JobNum IN ({placeholders})
           AND jo.LaborEntryMethod != 'B'
         ORDER BY jo.JobNum, jo.AssemblySeq DESC, jo.OprSeq ASC
@@ -217,35 +245,55 @@ def get_bulk_operations(job_nums):
     return result
 
 
-def get_bulk_materials(job_nums):
+def get_bulk_materials(job_nums, all_operations=None):
     """
     Get all materials with inventory for a list of jobs.
-    
+
     Includes materials from preceding backflush operations up to the previous
     non-backflush (quantity) operation. Excludes materials from PAINT operations.
-    
+
+    Args:
+        job_nums: List of job numbers to fetch materials for
+        all_operations: Optional dict from get_bulk_operations() to avoid duplicate query
+
     Returns dict keyed by 'JobNum-AssemblySeq-OprSeq'.
     """
     if not job_nums:
         return {}
-    
+
     placeholders = ', '.join([f':j{i}' for i in range(len(job_nums))])
     params = {f'j{i}': jn for i, jn in enumerate(job_nums)}
-    
-    # Step 1: Get all operations to determine backflush relationships
-    ops_query = f"""
-        SELECT JobNum, AssemblySeq, OprSeq, OpCode, LaborEntryMethod
-        FROM Erp.JobOper
-        WHERE JobNum IN ({placeholders})
-        ORDER BY JobNum, AssemblySeq, OprSeq
-    """
-    all_ops = sql_query(ops_query, params)
-    
+
+    # Step 1: Get operation info for backflush mapping
+    # If we already have operations from get_bulk_operations, use that data
+    t1 = time.time()
+    if all_operations:
+        # Flatten the operations dict and add LaborEntryMethod info
+        # We need a separate lightweight query just for LaborEntryMethod since bulk_operations excludes backflush
+        ops_query = f"""
+            SELECT JobNum, AssemblySeq, OprSeq, OpCode, LaborEntryMethod
+            FROM Erp.JobOper
+            WHERE JobNum IN ({placeholders})
+            ORDER BY JobNum, AssemblySeq, OprSeq
+        """
+        all_ops = sql_query(ops_query, params)
+        log_timing(f"    4a. bulk_materials: ops query ({len(all_ops)} ops)", time.time() - t1)
+    else:
+        ops_query = f"""
+            SELECT JobNum, AssemblySeq, OprSeq, OpCode, LaborEntryMethod
+            FROM Erp.JobOper
+            WHERE JobNum IN ({placeholders})
+            ORDER BY JobNum, AssemblySeq, OprSeq
+        """
+        all_ops = sql_query(ops_query, params)
+        log_timing(f"    4a. bulk_materials: ops query ({len(all_ops)} ops)", time.time() - t1)
+
+    # Build a lookup for OpCode by (job, asm, opr) - used to filter PAINT in Python
+    op_code_lookup = {(op['JobNum'], op['AssemblySeq'], op['OprSeq']): op['OpCode'] for op in all_ops}
+
     # Step 2: Build mapping of which operations' materials belong to which visible operation
-    # For each (job, assembly), walk through ops in sequence
-    # When we hit a non-backflush op, all preceding backflush ops (since last non-backflush) belong to it
     op_mapping = {}  # (job, asm, opr) -> list of (job, asm, opr) whose materials to include
-    
+
     # Group operations by job and assembly
     ops_by_job_asm = {}
     for op in all_ops:
@@ -253,65 +301,71 @@ def get_bulk_materials(job_nums):
         if key not in ops_by_job_asm:
             ops_by_job_asm[key] = []
         ops_by_job_asm[key].append(op)
-    
+
     # For each assembly, determine material ownership
     for (job_num, asm_seq), ops in ops_by_job_asm.items():
-        pending_backflush = []  # Backflush ops waiting to be assigned
-        
+        pending_backflush = []
+
         for op in ops:
             opr_seq = op['OprSeq']
             is_backflush = op['LaborEntryMethod'] == 'B'
             is_paint = op['OpCode'] == 'PAINT'
-            
+
             if is_backflush:
-                # Don't include PAINT operation materials
                 if not is_paint:
                     pending_backflush.append((job_num, asm_seq, opr_seq))
             else:
-                # Non-backflush (quantity) operation - assign pending backflush materials to it
                 visible_key = (job_num, asm_seq, opr_seq)
-                # Include this operation's own materials plus any pending backflush
                 op_mapping[visible_key] = pending_backflush + [visible_key]
-                pending_backflush = []  # Reset for next group
-    
-    # Step 3: Get all materials (excluding PAINT operations)
+                pending_backflush = []
+
+    # Step 3: Get materials - REMOVED JobOper join for performance
+    # We filter PAINT operations in Python using op_code_lookup
+    t2 = time.time()
     mtl_query = f"""
         SELECT jm.JobNum, jm.AssemblySeq, jm.RelatedOperation AS OprSeq,
                jm.MtlSeq, jm.PartNum, p.PartDescription, jm.RequiredQty,
-               ISNULL(jm.IUM, p.IUM) AS ReqUOM, p.IUM AS OnHandUOM,
-               jo.OpCode AS SourceOpCode
+               ISNULL(jm.IUM, p.IUM) AS ReqUOM, p.IUM AS OnHandUOM
         FROM Erp.JobMtl jm
         LEFT JOIN Erp.Part p ON jm.Company = p.Company AND jm.PartNum = p.PartNum
-        INNER JOIN Erp.JobOper jo ON jm.Company = jo.Company 
-            AND jm.JobNum = jo.JobNum 
-            AND jm.AssemblySeq = jo.AssemblySeq 
-            AND jm.RelatedOperation = jo.OprSeq
         WHERE jm.JobNum IN ({placeholders})
           AND jm.RequiredQty > 0
-          AND jo.OpCode != 'PAINT'
         ORDER BY jm.JobNum, jm.AssemblySeq, jm.RelatedOperation, jm.MtlSeq
     """
-    
-    materials = sql_query(mtl_query, params)
-    
+
+    materials_raw = sql_query(mtl_query, params)
+
+    # Filter out PAINT operations in Python (much faster than SQL join)
+    materials = []
+    for m in materials_raw:
+        op_key = (m['JobNum'], m['AssemblySeq'], m['OprSeq'])
+        op_code = op_code_lookup.get(op_key, '')
+        if op_code != 'PAINT':
+            m['SourceOpCode'] = op_code
+            materials.append(m)
+
+    log_timing(f"    4b. bulk_materials: materials query ({len(materials_raw)} raw, {len(materials)} filtered)", time.time() - t2)
+
     if not materials:
         return {}
     
     # Step 4: Get unique part numbers and batch lookup inventory
+    t3 = time.time()
     part_nums = list(set(m['PartNum'] for m in materials))
-    
+
     inv_placeholders = ', '.join([f':p{i}' for i in range(len(part_nums))])
     inv_params = {f'p{i}': pn for i, pn in enumerate(part_nums)}
-    
+
     inv_query = f"""
         SELECT PartNum, SUM(OnHandQty) AS OnHandQty, SUM(DemandQty) AS DemandQty
         FROM Erp.PartQty
         WHERE PartNum IN ({inv_placeholders})
         GROUP BY PartNum
     """
-    
+
     inv_data = sql_query(inv_query, inv_params)
     inv_map = {row['PartNum']: row for row in inv_data}
+    log_timing(f"    4c. bulk_materials: inventory query ({len(part_nums)} parts)", time.time() - t3)
     
     # Step 5: Group materials by their source operation
     mtl_by_source = {}
@@ -341,32 +395,34 @@ def get_bulk_materials(job_nums):
 
 def get_jobs_with_details(workcell_id):
     """
-    Get jobs for workcell with operations and materials pre-loaded.
-    Uses 3 queries instead of N subqueries for performance.
+    Get jobs for workcell. Operations and materials loaded on-demand via API.
+    MtlStatus is calculated in the main query via CTEs.
     """
-    # 1. Get main job list (fast)
+    t_total = time.time()
+
+    # 1. Get main job list (includes MtlStatus from CTEs)
+    t1 = time.time()
     jobs = get_jobs_for_workcell(workcell_id)
+    log_timing(f"  1. get_jobs_for_workcell ({len(jobs)} jobs)", time.time() - t1)
+
     if not jobs:
         return []
-    
-    # 2. Collect unique job numbers
-    job_nums = list(set(j['JobNum'] for j in jobs))
-    
-    # 3. Bulk fetch operations and materials (just by job number)
-    all_operations = get_bulk_operations(job_nums)
-    all_materials = get_bulk_materials(job_nums)
-    
-    # 4. Merge into jobs as JSON strings
+
+    # 2. SKIP bulk operations - load on-demand via /api/job/<job>/<asm>/<opr>
+    log_timing(f"  2. bulk_operations: SKIPPED (on-demand)", 0)
+
+    # 3. SKIP bulk materials - load on-demand via /api/job/<job>/<asm>/<opr>
+    # MtlStatus is already calculated in get_jobs_for_workcell() via CTEs
+    log_timing(f"  3. bulk_materials: SKIPPED (on-demand)", 0)
+
+    # 4. Set empty JSON for on-demand loading
+    t4 = time.time()
     for job in jobs:
-        jn = job['JobNum']
-        key = f"{jn}-{job['AssemblySeq']}-{job['OprSeq']}"
-        
-        ops = all_operations.get(jn, [])
-        mtls = all_materials.get(key, [])
-        
-        job['OperationsJSON'] = json.dumps(ops) if ops else '[]'
-        job['MaterialsJSON'] = json.dumps(mtls) if mtls else '[]'
-    
+        job['OperationsJSON'] = '[]'  # Empty - loaded on-demand
+        job['MaterialsJSON'] = '[]'   # Empty - loaded on-demand
+    log_timing(f"  4. set empty JSON", time.time() - t4)
+
+    log_timing(f"  TOTAL get_jobs_with_details", time.time() - t_total)
     return jobs
 
 
@@ -884,7 +940,9 @@ def get_jobs_for_workcell(workcell_id):
             -- Resource from ResourceTimeUsed (actual scheduled resource)
             rtu.ResourceID,
             -- Capability from JobOpDtl (scheduling option)
-            jod.CapabilityID
+            jod.CapabilityID,
+            -- Part on-hand quantity
+            ISNULL(poh.OnHandQty, 0) AS PartOnHand
         FROM Erp.JobHead jh
         INNER JOIN Erp.JobOper jo 
             ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
@@ -935,13 +993,19 @@ def get_jobs_for_workcell(workcell_id):
         LEFT JOIN Ice.XFileRef xfr
             ON xfa.Company = xfr.Company
             AND xfa.XFileRefNum = xfr.XFileRefNum
+        -- Get on-hand qty for the part (use JobAsmbl part for sub-assemblies, JobHead part for asm 0)
+        OUTER APPLY (
+            SELECT SUM(OnHandQty) AS OnHandQty
+            FROM Erp.PartQty
+            WHERE PartNum = CASE WHEN jo.AssemblySeq > 0 THEN ja.PartNum ELSE jh.PartNum END
+        ) poh
         WHERE jh.JobComplete = 0
           AND jh.JobReleased = 1
           AND jo.OpCode IN ({placeholders})
           AND jo.OpComplete = 0
           AND jo.LaborEntryMethod != 'B'
-          -- Rule 3: First op on assembly OR prior op has qty completed
-          AND (poq.IsFirstOp = 1 OR poq.QtyFromPrior > 0)
+          -- Rule 3: First op on assembly OR prior op has qty completed OR SS/FF scheduling
+          AND (poq.IsFirstOp = 1 OR poq.QtyFromPrior > 0 OR jo.SchedRelation IN ('SS', 'FF'))
           -- Rule 4: If ASM0, all sub-assemblies must have last op with qty completed
           AND (jo.AssemblySeq > 0 OR sac.AllSubAsmsReady = 1)
         ORDER BY 
@@ -1047,17 +1111,74 @@ def search_parts(search_term):
 
 
 def get_job_operations(job_num):
-    """Get all non-backflush operations for a job, ordered by assembly then op seq."""
+    """
+    Get all non-backflush operations for a job, ordered by assembly then op seq.
+    Includes ResourceGrpID, ResourceID, JCDept, CapabilityID for labor entry.
+    """
     query = """
-        SELECT 
+        SELECT
             jo.AssemblySeq,
             jo.OprSeq,
             jo.OpCode,
             jo.OpDesc,
             jo.QtyCompleted,
             jo.OpComplete,
-            jo.ProdStandard
+            jo.ProdStandard,
+            -- For LABOR ENTRY: ResourceGrpID with fallback chain
+            COALESCE(
+                NULLIF(jod.ResourceGrpID, ''),
+                res_from_jod.ResourceGrpID,
+                res_from_rtu.ResourceGrpID
+            ) AS ResourceGrpID,
+            -- For LABOR ENTRY: ResourceID with fallback chain
+            COALESCE(
+                NULLIF(jod.ResourceID, ''),
+                r.ResourceID,
+                rtu.ResourceID
+            ) AS ResourceID,
+            -- For LABOR ENTRY: JCDept from ResourceGroup with fallback chain
+            COALESCE(
+                rg_from_jod_grp.JCDept,
+                rg_from_jod_res.JCDept,
+                rg_from_rtu.JCDept
+            ) AS JCDept,
+            jod.CapabilityID
         FROM Erp.JobOper jo
+        LEFT JOIN Erp.JobOpDtl jod ON jo.Company = jod.Company
+            AND jo.JobNum = jod.JobNum
+            AND jo.AssemblySeq = jod.AssemblySeq
+            AND jo.OprSeq = jod.OprSeq
+        -- Get ResourceGroup directly from JobOpDtl.ResourceGrpID
+        LEFT JOIN Erp.ResourceGroup rg_from_jod_grp ON jod.Company = rg_from_jod_grp.Company
+            AND jod.ResourceGrpID = rg_from_jod_grp.ResourceGrpID
+            AND jod.ResourceGrpID IS NOT NULL AND jod.ResourceGrpID != ''
+        -- Get default Resource from ResourceGroup (first location resource)
+        OUTER APPLY (
+            SELECT TOP 1 ResourceID
+            FROM Erp.Resource
+            WHERE ResourceGrpID = jod.ResourceGrpID
+              AND Location = 1
+        ) r
+        -- If JobOpDtl has ResourceID but no ResourceGrpID, look up the group from Resource table
+        LEFT JOIN Erp.Resource res_from_jod ON jod.Company = res_from_jod.Company
+            AND jod.ResourceID = res_from_jod.ResourceID
+            AND (jod.ResourceGrpID IS NULL OR jod.ResourceGrpID = '')
+        LEFT JOIN Erp.ResourceGroup rg_from_jod_res ON res_from_jod.Company = rg_from_jod_res.Company
+            AND res_from_jod.ResourceGrpID = rg_from_jod_res.ResourceGrpID
+        -- Get scheduled resource from ResourceTimeUsed (for display/filtering AND as final fallback)
+        OUTER APPLY (
+            SELECT TOP 1 ResourceID
+            FROM Erp.ResourceTimeUsed
+            WHERE Company = jo.Company
+              AND JobNum = jo.JobNum
+              AND AssemblySeq = jo.AssemblySeq
+              AND OprSeq = jo.OprSeq
+        ) rtu
+        -- Fallback: Get ResourceGrpID from Resource table using ResourceTimeUsed.ResourceID
+        LEFT JOIN Erp.Resource res_from_rtu ON jo.Company = res_from_rtu.Company
+            AND rtu.ResourceID = res_from_rtu.ResourceID
+        LEFT JOIN Erp.ResourceGroup rg_from_rtu ON res_from_rtu.Company = rg_from_rtu.Company
+            AND res_from_rtu.ResourceGrpID = rg_from_rtu.ResourceGrpID
         WHERE jo.JobNum = :job_num
           AND jo.LaborEntryMethod != 'B'
         ORDER BY jo.AssemblySeq DESC, jo.OprSeq ASC
@@ -1180,7 +1301,7 @@ def get_active_labor_details(job_nums_with_ops):
         job_nums_with_ops: list of dicts with JobNum, AssemblySeq, OprSeq
     
     Returns:
-        dict mapping 'JobNum-AsmSeq-OprSeq' to job details
+        dict mapping 'JobNum-AsmSeq-OprSeq' to job details including material status
     """
     if not job_nums_with_ops:
         return {}
@@ -1229,6 +1350,10 @@ def get_active_labor_details(job_nums_with_ops):
     
     results = sql_query(query, params)
     
+    # Get material info for these operations using bulk materials lookup
+    job_nums = list(set(rec['JobNum'] for rec in job_nums_with_ops))
+    all_materials = get_bulk_materials(job_nums)
+    
     # Build map of jobkey -> details
     details_map = {}
     for row in results:
@@ -1245,6 +1370,56 @@ def get_active_labor_details(job_nums_with_ops):
             qty_from_prior = row['QtyFromPrior'] or 0
             qty_available = max(0, qty_from_prior - qty_completed)
         
+        # Calculate material status and max producible qty
+        materials = all_materials.get(key, [])
+        mtl_status = 'none'
+        max_mtl_qty = None  # None means no material constraint
+        
+        if materials:
+            has_missing = False
+            has_partial = False
+            has_check = False
+            all_star = True
+            min_producible = float('inf')
+            
+            for m in materials:
+                on_hand = m.get('OnHandQty', 0) or 0
+                required = m.get('RequiredQty', 0) or 0
+                demand = m.get('DemandQty', 0) or required
+                
+                # Calculate status for this material
+                if on_hand == 0:
+                    has_missing = True
+                    all_star = False
+                elif on_hand < required:
+                    has_partial = True
+                    all_star = False
+                elif on_hand < demand:
+                    has_check = True
+                    all_star = False
+                
+                # Calculate max producible from this material
+                # max_units = on_hand / (required / prod_qty) = on_hand * prod_qty / required
+                if required > 0 and prod_qty > 0:
+                    per_unit_need = required / prod_qty
+                    if per_unit_need > 0:
+                        can_make = on_hand / per_unit_need
+                        min_producible = min(min_producible, can_make)
+            
+            # Set material status (priority: missing > partial > check > star)
+            if has_missing:
+                mtl_status = 'missing'
+            elif has_partial:
+                mtl_status = 'partial'
+            elif has_check:
+                mtl_status = 'check'
+            elif all_star:
+                mtl_status = 'star'
+            
+            # Set max producible (floor to int)
+            if min_producible != float('inf'):
+                max_mtl_qty = int(min_producible)
+        
         details_map[key] = {
             'PartNum': row['PartNum'],
             'PartDescription': row['PartDescription'],
@@ -1253,7 +1428,9 @@ def get_active_labor_details(job_nums_with_ops):
             'QtyCompleted': int(qty_completed),
             'QtyLeft': int(qty_left),
             'QtyAvailable': int(qty_available) if qty_available is not None else None,
-            'IsFirstOp': is_first_op
+            'IsFirstOp': is_first_op,
+            'MtlStatus': mtl_status,
+            'MaxMtlQty': max_mtl_qty
         }
     
     return details_map
@@ -1264,17 +1441,21 @@ def get_last_kanban_receipt(part_num):
     Get the last inventory receipt for a part number.
     Used to prevent double-entry on Kanban receipts.
     Looks for MFG-STK transactions (manufactured to stock).
+    Gets employee from the associated LaborDtl record.
     """
     query = """
         SELECT TOP 1
             pt.TranQty,
             CONVERT(VARCHAR(10), pt.TranDate, 23) AS TranDate,
-            pt.EntryPerson,
+            ld.EmployeeNum,
             e.Name AS EmployeeName,
             pt.TranNum,
             pt.TranType
         FROM Erp.PartTran pt
-        LEFT JOIN Erp.EmpBasic e ON pt.Company = e.Company AND pt.EntryPerson = e.EmpID
+        LEFT JOIN Erp.LaborDtl ld ON pt.Company = ld.Company 
+            AND pt.JobNum = ld.JobNum
+            AND ld.LaborQty > 0
+        LEFT JOIN Erp.EmpBasic e ON ld.Company = e.Company AND ld.EmployeeNum = e.EmpID
         WHERE pt.PartNum = :part_num
           AND pt.TranType = 'MFG-STK'
           AND pt.TranQty > 0
@@ -1345,3 +1526,121 @@ def get_insert_summary():
     """
     
     return sql_query(query)
+
+
+def get_all_workcell_counts():
+    """
+    Get job counts for all workcells in one efficient query.
+    Returns dict mapping workcell_id to job count.
+    """
+    # Collect all op codes from all workcells
+    all_ops = set()
+    op_to_workcell = {}  # Map each op code to its workcell(s)
+    
+    for wc_id, wc_config in WORKCELLS.items():
+        # Skip dashboard-type workcells (they don't have standard job queues)
+        if wc_config.get('dashboard_type'):
+            continue
+        for op in wc_config.get('ops', []):
+            all_ops.add(op)
+            if op not in op_to_workcell:
+                op_to_workcell[op] = []
+            op_to_workcell[op].append(wc_id)
+    
+    if not all_ops:
+        return {}
+    
+    # Build query to count jobs by OpCode
+    placeholders = ', '.join([f':op{i}' for i in range(len(all_ops))])
+    params = {f'op{i}': op for i, op in enumerate(all_ops)}
+    
+    query = f"""
+        SELECT jo.OpCode, COUNT(*) AS JobCount
+        FROM Erp.JobHead jh
+        INNER JOIN Erp.JobOper jo ON jh.Company = jo.Company AND jh.JobNum = jo.JobNum
+        WHERE jh.JobComplete = 0
+          AND jh.JobReleased = 1
+          AND jo.OpCode IN ({placeholders})
+          AND jo.OpComplete = 0
+          AND jo.LaborEntryMethod != 'B'
+        GROUP BY jo.OpCode
+    """
+    
+    rows = sql_query(query, params)
+    
+    # Build counts by workcell
+    counts = {wc_id: 0 for wc_id in WORKCELLS.keys()}
+    
+    for row in rows:
+        op_code = row['OpCode']
+        count = row['JobCount']
+        # Add this count to each workcell that uses this op code
+        for wc_id in op_to_workcell.get(op_code, []):
+            counts[wc_id] += count
+    
+    return counts
+
+
+def get_active_worker_count():
+    """
+    Get count of workers currently working on jobs.
+    Returns int count of distinct employees with active LaborDtl records.
+    """
+    query = """
+        SELECT COUNT(DISTINCT lh.EmployeeNum) AS ActiveCount
+        FROM Erp.LaborDtl ld
+        INNER JOIN Erp.LaborHed lh ON ld.Company = lh.Company AND ld.LaborHedSeq = lh.LaborHedSeq
+        WHERE ld.ActiveTrans = 1
+    """
+    
+    result = sql_query(query)
+    return result[0]['ActiveCount'] if result else 0
+
+
+def get_active_job_count():
+    """
+    Get count of jobs currently being worked on.
+    Returns int count of distinct jobs with active LaborDtl records.
+    """
+    query = """
+        SELECT COUNT(DISTINCT JobNum) AS ActiveCount
+        FROM Erp.LaborDtl
+        WHERE ActiveTrans = 1
+    """
+    
+    result = sql_query(query)
+    return result[0]['ActiveCount'] if result else 0
+
+
+def get_operation_last_entries(job_num):
+    """
+    Get last entry dates for all non-backflush operations on a job.
+    Loaded on-demand when row is expanded (removed from bulk query for performance).
+    
+    Returns dict mapping 'AssemblySeq-OprSeq' to last entry date string (YYYY-MM-DD).
+    """
+    query = """
+        SELECT 
+            jo.AssemblySeq,
+            jo.OprSeq,
+            CONVERT(VARCHAR(10), 
+                (SELECT MAX(ld.ClockInDate) 
+                 FROM Erp.LaborDtl ld 
+                 WHERE ld.JobNum = jo.JobNum 
+                   AND ld.AssemblySeq = jo.AssemblySeq
+                   AND ld.OprSeq = jo.OprSeq 
+                   AND ld.LaborQty > 0), 23) AS LastEntryDate
+        FROM Erp.JobOper jo
+        WHERE jo.JobNum = :job_num
+          AND jo.LaborEntryMethod != 'B'
+    """
+    
+    rows = sql_query(query, {'job_num': job_num})
+    
+    # Build dict keyed by 'AssemblySeq-OprSeq'
+    result = {}
+    for row in rows:
+        key = f"{row['AssemblySeq']}-{row['OprSeq']}"
+        result[key] = row['LastEntryDate']  # May be None if no labor entry yet
+    
+    return result

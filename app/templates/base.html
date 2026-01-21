@@ -13,7 +13,10 @@
         <div class="login-box">
             <h2>The Queue</h2>
             <p>Enter your employee number to continue</p>
-            <input type="text" id="login-emp-id" class="login-input" placeholder="Employee #" maxlength="3" autocomplete="off" inputmode="numeric">
+            <div class="login-input-row">
+                <input type="text" id="login-emp-id" class="login-input" placeholder="Employee #" maxlength="3" autocomplete="off" inputmode="numeric">
+                <button id="login-submit-btn" class="login-submit-btn">Go</button>
+            </div>
             <div id="login-error" class="login-error"></div>
         </div>
     </div>
@@ -55,8 +58,13 @@
     const switchLink = document.getElementById('switch-employee');
     
     function getStoredEmployee() {
-        const stored = localStorage.getItem('thequeue_employee');
-        return stored ? JSON.parse(stored) : null;
+        try {
+            const stored = localStorage.getItem('thequeue_employee');
+            return stored ? JSON.parse(stored) : null;
+        } catch (err) {
+            console.error('Error reading stored employee:', err);
+            return null;
+        }
     }
     
     function setStoredEmployee(empId, name) {
@@ -67,11 +75,14 @@
         localStorage.removeItem('thequeue_employee');
     }
     
-    function showLogin() {
+    function showLogin(prefillId) {
         loginOverlay.style.display = 'flex';
-        loginInput.value = '';
+        loginInput.value = prefillId || '';
         loginError.textContent = '';
         loginInput.focus();
+        if (prefillId) {
+            loginInput.select();
+        }
     }
     
     function hideLogin() {
@@ -95,45 +106,67 @@
         }
     }
     
-    // Check on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        const employee = getStoredEmployee();
-        if (employee) {
-            updateEmployeeDisplay(employee.name);
-            hideLogin();
+    // Check on page load - smart auto-login
+    document.addEventListener('DOMContentLoaded', async function() {
+        const stored = getStoredEmployee();
+        
+        if (stored && stored.id && stored.name) {
+            // Show name immediately (trust localStorage for instant UX)
+            updateEmployeeDisplay(stored.name);
+            
+            // Validate in background - only show login if it fails
+            const validated = await validateEmployee(stored.id);
+            if (validated) {
+                // Update stored data in case name changed
+                setStoredEmployee(validated.EmpID, validated.Name);
+                updateEmployeeDisplay(validated.Name);
+            } else {
+                // Validation failed - show login with prefilled ID
+                showLogin(stored.id);
+                loginError.textContent = 'Please re-enter your employee number';
+            }
         } else {
+            // No stored employee - show login immediately
             showLogin();
         }
     });
     
     // Handle login input
+    async function submitLogin() {
+        const empId = loginInput.value.trim();
+        if (!empId) {
+            loginError.textContent = 'Please enter your employee number';
+            return;
+        }
+        
+        loginError.textContent = 'Checking...';
+        const employee = await validateEmployee(empId);
+        
+        if (employee) {
+            setStoredEmployee(employee.EmpID, employee.Name);
+            updateEmployeeDisplay(employee.Name);
+            hideLogin();
+        } else {
+            loginError.textContent = 'Employee not found';
+            loginInput.select();
+        }
+    }
+    
     loginInput.addEventListener('keypress', async function(e) {
         if (e.key === 'Enter') {
-            const empId = loginInput.value.trim();
-            if (!empId) {
-                loginError.textContent = 'Please enter your employee number';
-                return;
-            }
-            
-            loginError.textContent = 'Checking...';
-            const employee = await validateEmployee(empId);
-            
-            if (employee) {
-                setStoredEmployee(employee.EmpID, employee.Name);
-                updateEmployeeDisplay(employee.Name);
-                hideLogin();
-            } else {
-                loginError.textContent = 'Employee not found';
-                loginInput.select();
-            }
+            submitLogin();
         }
     });
+    
+    // Handle login button click
+    document.getElementById('login-submit-btn').addEventListener('click', submitLogin);
     
     // Handle switch employee
     switchLink.addEventListener('click', function(e) {
         e.preventDefault();
+        const current = getStoredEmployee();
         clearStoredEmployee();
-        showLogin();
+        showLogin(current ? current.id : '');
     });
     </script>
     

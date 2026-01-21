@@ -376,9 +376,20 @@
         <h1>Select Work Cell</h1>
         <button id="kanban-btn" class="kanban-home-btn">Kanban Receipt</button>
     </div>
+    
+
     <div class="groups-container">
         {% for group in groups %}
-        <div class="workcell-group">
+        {% set group_class = {
+            'Laser / Press': 'group-red',
+            'Saw / Weld / Burn': 'group-yellow',
+            'Machining': 'group-green',
+            'Powder': 'group-purple',
+            'Shipping': 'group-orange',
+            'Assembly': 'group-blue',
+            'Office': 'group-gray'
+        }.get(group.name, '') %}
+        <div class="workcell-group {{ group_class }}">
             <h2 class="group-title">{{ group.name }}</h2>
             <div class="workcell-grid">
                 {% for wc in group.workcells %}
@@ -419,6 +430,10 @@
                 <div class="kanban-qty-row">
                     <label>Quantity:</label>
                     <input type="number" id="kanban-qty" class="kanban-qty-input" min="1" value="1" autocomplete="off">
+                </div>
+                <div class="kanban-qty-row">
+                    <label>Scrap:</label>
+                    <input type="number" id="kanban-scrap" class="kanban-qty-input" min="0" value="0" autocomplete="off">
                 </div>
                 <div id="kanban-last-row" class="kanban-last-row" style="display: none;">
                     <label>Last:</label>
@@ -474,6 +489,7 @@ const kanbanSearchInput = document.getElementById('kanban-search');
 const kanbanResults = document.getElementById('kanban-results');
 const kanbanSelected = document.getElementById('kanban-selected');
 const kanbanQtyInput = document.getElementById('kanban-qty');
+const kanbanScrapInput = document.getElementById('kanban-scrap');
 const kanbanMessage = document.getElementById('kanban-message');
 
 let selectedPart = null;
@@ -492,6 +508,7 @@ function openKanbanModal() {
     kanbanResults.innerHTML = '';
     kanbanSelected.style.display = 'none';
     kanbanQtyInput.value = 1;
+    kanbanScrapInput.value = 0;
     kanbanMessage.className = 'kanban-message';
     kanbanMessage.textContent = '';
     kanbanSubmitBtn.disabled = true;
@@ -578,30 +595,37 @@ function clearSelection() {
 async function submitKanban() {
     const emp = getStoredEmployee();
     if (!emp || !selectedPart) return;
-    
+
     const qty = parseInt(kanbanQtyInput.value, 10);
+    const scrap = parseInt(kanbanScrapInput.value, 10) || 0;
     if (!qty || qty < 1) {
         kanbanMessage.textContent = 'Enter a valid quantity.';
         kanbanMessage.className = 'kanban-message error';
         return;
     }
-    
+    if (scrap < 0) {
+        kanbanMessage.textContent = 'Scrap cannot be negative.';
+        kanbanMessage.className = 'kanban-message error';
+        return;
+    }
+
     kanbanSubmitBtn.disabled = true;
     kanbanMessage.textContent = 'Processing...';
     kanbanMessage.className = 'kanban-message processing';
-    
+
     try {
         const resp = await fetch('/api/kanban/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ empId: emp.id, partNum: selectedPart, quantity: qty })
+            body: JSON.stringify({ empId: emp.id, partNum: selectedPart, quantity: qty, scrap: scrap, scrapReason: scrap > 0 ? 'SCRAP' : '' })
         });
         const result = await resp.json();
         
         if (result.success) {
             kanbanMessage.textContent = result.message || 'Success!';
             kanbanMessage.className = 'kanban-message success';
-            setTimeout(() => closeKanbanModal(), 1500);
+            // Modal stays open after success - user can close manually or submit again
+            kanbanSubmitBtn.disabled = false;
         } else {
             kanbanMessage.textContent = result.error || 'Failed';
             kanbanMessage.className = 'kanban-message error';
@@ -630,9 +654,7 @@ kanbanQtyInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') submitKanban();
 });
 
-window.addEventListener('click', (e) => {
-    if (e.target === kanbanModal) closeKanbanModal();
-});
+// Removed: click-outside-to-close - modal persists until manually closed
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && kanbanModal.style.display === 'flex') closeKanbanModal();

@@ -32,6 +32,17 @@
     
     <input type="text" id="search-box" class="search-box" placeholder="Search jobs..." autocomplete="off">
     
+    <label class="active-only-filter">
+        <input type="checkbox" id="active-only-checkbox">
+        <span>Active Only</span>
+    </label>
+    
+    <div class="grouping-toggle">
+        <button id="grouping-toggle-btn" class="grouping-toggle-btn">
+            <span class="toggle-icon">⊞</span> Group
+        </button>
+    </div>
+    
     {% if workcell_config.group_by_material %}
     <div class="material-filter">
         <select id="material-select" class="material-select">
@@ -63,6 +74,15 @@
         </select>
     </div>
     {% endif %}
+</div>
+
+<!-- Group Drop Zone (hidden by default) -->
+<div id="group-drop-zone" class="group-drop-zone hidden">
+    <span class="group-drop-zone-hint">Drag column headers here to group</span>
+    <div class="group-controls" style="display: none;">
+        <button class="group-control-btn" id="expand-all-btn">Expand All</button>
+        <button class="group-control-btn" id="collapse-all-btn">Collapse All</button>
+    </div>
 </div>
 {% endif %}
 
@@ -111,7 +131,8 @@
                 data-priority="{{ job.Priority or '' }}"
                 data-pdfpath="{{ job.PdfPath or '' }}"
                 data-resourceid="{{ job.ResourceID or '' }}"
-                data-capabilityid="{{ job.CapabilityID or '' }}">
+                data-capabilityid="{{ job.CapabilityID or '' }}"
+                data-partonhand="{{ (job.PartOnHand or 0)|int }}">
                 
                 <td class="col-select"><input type="checkbox" class="row-select" onclick="event.stopPropagation()"></td>
                 
@@ -222,14 +243,12 @@
                     <label for="single-end-scrap">Scrap</label>
                     <input type="number" id="single-end-scrap" class="labor-input" min="0" step="1" value="0">
                 </div>
-                <div class="labor-input-group checkbox-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="single-end-done">
-                        <span>Mark Complete</span>
-                    </label>
-                </div>
             </div>
-            <div id="single-end-first-op-options" class="first-op-options" style="display: none;">
+            <div id="single-end-first-op-options" class="first-op-options">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="single-end-done">
+                    <span>Mark Complete</span>
+                </label>
                 <label class="checkbox-label">
                     <input type="checkbox" id="single-end-set-job-qty" checked>
                     <span>Set job quantity to match completed</span>
@@ -283,9 +302,11 @@
                         <th class="col-qty">Qty</th>
                         <th class="col-qty">Left</th>
                         <th class="col-qty">Avail</th>
+                        <th class="col-mtl">Mtl</th>
                         <th class="col-input">Complete</th>
                         <th class="col-input">Scrap</th>
                         <th class="col-done">Done</th>
+                        <th class="col-done">Upd Qty</th>
                     </tr>
                 </thead>
                 <tbody id="mass-end-tbody">
@@ -335,6 +356,7 @@ let currentSort = { column: null, direction: 'asc' };
 const PAGE_SIZE = 200;
 let currentPage = 1;
 let filteredRows = [];  // Rows that pass current filters
+let allJobRows = [];    // All original rows (preserved reference)
 
 // Current filters
 let currentOpFilter = 'all';
@@ -346,6 +368,7 @@ let materialJobKeys = null;  // null = show all, array = show only these
 let colorJobKeys = null;  // null = show all, array = show only these
 let resourceJobKeys = null;  // null = show all, array = show only these
 let capabilityJobKeys = null;  // null = show all, array = show only these
+let showActiveOnly = false;  // Filter to show only active labor jobs
 
 // Detail panel references (declared early for use in applyFilters)
 let currentExpandedRow = null;
@@ -534,13 +557,26 @@ if (capabilitySelect) {
     });
 }
 
+// --- ACTIVE ONLY FILTER CHECKBOX ---
+const activeOnlyCheckbox = document.getElementById('active-only-checkbox');
+if (activeOnlyCheckbox) {
+    activeOnlyCheckbox.addEventListener('change', () => {
+        showActiveOnly = activeOnlyCheckbox.checked;
+        applyFilters();
+    });
+}
+
 function applyFilters() {
     const searchQuery = document.getElementById('search-box').value.toLowerCase();
-    const tbody = document.getElementById('job-tbody');
-    const allRows = Array.from(tbody.querySelectorAll('.job-row'));
     
-    // Step 1: Find all rows that match filters
-    filteredRows = allRows.filter(row => {
+    // Initialize allJobRows on first call if not done yet
+    if (allJobRows.length === 0) {
+        const tbody = document.getElementById('job-tbody');
+        allJobRows = Array.from(tbody.querySelectorAll('.job-row'));
+    }
+    
+    // Filter from preserved list, not current DOM
+    filteredRows = allJobRows.filter(row => {
         const text = row.textContent.toLowerCase();
         const opCode = row.dataset.opcode;
         const jobKey = row.dataset.jobkey;
@@ -551,20 +587,23 @@ function applyFilters() {
         const matchesColor = colorJobKeys === null || colorJobKeys.includes(jobKey);
         const matchesResource = resourceJobKeys === null || resourceJobKeys.includes(jobKey);
         const matchesCapability = capabilityJobKeys === null || capabilityJobKeys.includes(jobKey);
+        const matchesActive = !showActiveOnly || row.classList.contains('active-labor');
         
-        return matchesSearch && matchesOp && matchesMaterial && matchesColor && matchesResource && matchesCapability;
+        return matchesSearch && matchesOp && matchesMaterial && matchesColor && matchesResource && matchesCapability && matchesActive;
     });
     
     // Reset to page 1 when filters change
     currentPage = 1;
     
     // Step 2: Show only current page
-    showCurrentPage(allRows);
+    showCurrentPage();
 }
 
-function showCurrentPage(allRows) {
-    if (!allRows) {
-        allRows = Array.from(document.getElementById('job-tbody').querySelectorAll('.job-row'));
+function showCurrentPage() {
+    // Use preserved list of all rows
+    if (allJobRows.length === 0) {
+        const tbody = document.getElementById('job-tbody');
+        allJobRows = Array.from(tbody.querySelectorAll('.job-row'));
     }
     
     const startIdx = (currentPage - 1) * PAGE_SIZE;
@@ -572,7 +611,7 @@ function showCurrentPage(allRows) {
     const pageRows = new Set(filteredRows.slice(startIdx, endIdx));
     
     // Hide all, show only current page
-    allRows.forEach(row => {
+    allJobRows.forEach(row => {
         row.style.display = pageRows.has(row) ? '' : 'none';
     });
     
@@ -691,7 +730,8 @@ document.querySelectorAll('.job-row').forEach(row => {
             isFirstOp: row.dataset.isFirstOp,
             mtlStatus: row.dataset.mtlStatus,
             resourceid: row.dataset.resourceid,
-            capabilityid: row.dataset.capabilityid
+            capabilityid: row.dataset.capabilityid,
+            partonhand: row.dataset.partonhand
         };
         
         const description = row.querySelector('.col-desc')?.textContent?.trim() || '';
@@ -804,6 +844,9 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
     else if (mtlStatus === 'partial') { mtlIcon = '<span class="mtl-partial">⚠</span>'; mtlTitle = 'Partial - can do some'; }
     else if (mtlStatus === 'missing') { mtlIcon = '<span class="mtl-missing">✗</span>'; mtlTitle = 'None - materials needed'; }
     html += `<div class="info-item qty-item"><span class="info-label">Mtl</span><span class="info-value mtl-value" title="${mtlTitle}">${mtlIcon}</span></div>`;
+    // Part on-hand
+    const partOnHand = parseInt(extraData.partonhand) || 0;
+    html += `<div class="info-item qty-item"><span class="info-label">On Hand</span><span class="info-value">${partOnHand}</span></div>`;
     html += '</div>';
     
     // Group 3: Times
@@ -886,112 +929,29 @@ function loadJobDetails(jobNum, asmSeq, oprSeq, partNum, qtyCompleted, extraData
     
     // Two-column layout: Operations left, Materials right
     html += '<div class="detail-columns">';
-    
-    // Operations section
+
+    // Operations section - loaded on-demand for performance
     html += '<div class="detail-col">';
-    if (operations.length > 0) {
-        html += `
-            <h4>Operations</h4>
-            <table class="ops-table">
-                <thead>
-                    <tr>
-                        <th>Seq</th>
-                        <th>Operation</th>
-                        <th>Cycle</th>
-                        <th>Done</th>
-                        <th>Last</th>
-                        <th>✓</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${operations.map(op => `
-                        <tr class="${op.OprSeq == oprSeq ? 'current-op' : ''} ${op.OpComplete ? 'op-complete' : ''}">
-                            <td>${op.OprSeq}</td>
-                            <td>${op.OpCode}</td>
-                            <td>${op.ProdStandard ? op.ProdStandard.toFixed(2) : '-'}</td>
-                            <td>${Math.floor(op.QtyCompleted)}</td>
-                            <td>${op.LastEntryDate ? formatLastEntry(op.LastEntryDate) : '-'}</td>
-                            <td><input type="checkbox" ${op.OpComplete ? 'checked' : ''} disabled></td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
-    }
+    html += '<h4>Operations</h4><div id="operations-container"><div class="loading-materials">Loading...</div></div>';
     html += '</div>';
-    
-    // Materials section
+
+    // Materials section - loaded on-demand for performance
     html += '<div class="detail-col">';
-    let displayMaterials = materials;
-    let showMoreBtn = false;
-    
-    if (materialLimit && materials.length > materialLimit) {
-        showMoreBtn = true;
-        displayMaterials = materials.slice(0, materialLimit);
-    }
-    
-    if (displayMaterials.length > 0) {
-        html += `
-            <h4>Materials${showMoreBtn ? ` (showing ${materialLimit} of ${materials.length})` : ''}</h4>
-            <table class="mtl-table">
-                <thead>
-                    <tr>
-                        <th>Part</th>
-                        <th>Description</th>
-                        <th>Req</th>
-                        <th>On Hand</th>
-                        <th>Demand</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${displayMaterials.map(m => {
-                        const isSheet = (m.ReqUOM === 'SH100' || m.OnHandUOM === 'SH100');
-                        const reqQty = isSheet ? m.RequiredQty.toFixed(2) : Math.floor(m.RequiredQty);
-                        const ohQty = isSheet ? (m.OnHandQty || 0).toFixed(2) : Math.floor(m.OnHandQty || 0);
-                        const demQty = isSheet ? (m.DemandQty || 0).toFixed(2) : Math.floor(m.DemandQty || 0);
-                        const onHand = m.OnHandQty || 0;
-                        const demand = m.DemandQty || m.RequiredQty;
-                        const required = m.RequiredQty || 0;
-                        let status = 'missing';
-                        if (onHand >= demand) status = 'star';
-                        else if (onHand >= required) status = 'check';
-                        else if (onHand > 0) status = 'partial';
-                        return `
-                        <tr class="mtl-${status}">
-                            <td>${m.PartNum}</td>
-                            <td>${m.PartDescription || '-'}</td>
-                            <td>${reqQty} <span class="uom">${m.ReqUOM || ''}</span></td>
-                            <td>${ohQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
-                            <td>${demQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
-                            <td>
-                                ${status === 'star' ? '<span class="mtl-star">★</span>' : 
-                                  status === 'check' ? '<span class="mtl-check">✓</span>' : 
-                                  status === 'partial' ? '<span class="mtl-partial">⚠</span>' : 
-                                  '<span class="mtl-missing">✗</span>'}
-                            </td>
-                        </tr>
-                    `}).join('')}
-                </tbody>
-            </table>
-        `;
-        if (showMoreBtn) {
-            html += `<button class="show-more-btn" onclick="showAllMaterials('${jobNum}', ${asmSeq}, ${oprSeq})">Show All ${materials.length} Materials</button>`;
-        }
-    } else {
-        html += '<h4>Materials</h4><div class="detail-empty">No materials required</div>';
-    }
+    html += '<h4>Materials</h4><div id="materials-container"><div class="loading-materials">Loading...</div></div>';
     html += '</div>';
-    
+
     html += '</div>'; // end detail-columns
-    
+
     content.innerHTML = html;
-    
-    // Load last check-in for WELD (this is the only API call we keep)
+
+    // Load last check-in for WELD
     if (showLastCheckin) {
         const opCode = row.dataset.opcode;
         loadLastCheckin(partNum, opCode, content);
     }
+
+    // Load operations and materials on-demand (performance optimization)
+    loadJobDetailOnDemand(jobNum, asmSeq, oprSeq, materialLimit, content);
 }
 
 function loadLastCheckin(partNum, opCode, container) {
@@ -1012,6 +972,161 @@ function loadLastCheckin(partNum, opCode, container) {
             }
         })
         .catch(err => console.error('Error loading last checkin:', err));
+}
+
+function loadJobDetailOnDemand(jobNum, asmSeq, oprSeq, materialLimit, container) {
+    // Load operations and materials on-demand (performance optimization)
+    fetch(`/api/job/${jobNum}/${asmSeq}/${oprSeq}`)
+        .then(response => response.json())
+        .then(data => {
+            const operations = data.operations || [];
+            const materials = data.materials || [];
+
+            // Cache in jobDetails for showAllMaterials and other uses
+            const key = `${jobNum}-${asmSeq}-${oprSeq}`;
+            if (!jobDetails[key]) jobDetails[key] = {};
+            jobDetails[key].operations = operations;
+            jobDetails[key].materials = materials;
+
+            // Render operations
+            const opsContainer = container.querySelector('#operations-container');
+            if (opsContainer) {
+                if (operations.length === 0) {
+                    opsContainer.innerHTML = '<div class="detail-empty">No operations</div>';
+                } else {
+                    opsContainer.innerHTML = `
+                        <table class="ops-table">
+                            <thead>
+                                <tr>
+                                    <th>Seq</th>
+                                    <th>Operation</th>
+                                    <th>Cycle</th>
+                                    <th>Done</th>
+                                    <th>Last</th>
+                                    <th>✓</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${operations.map(op => `
+                                    <tr class="${op.OprSeq == oprSeq ? 'current-op' : ''} ${op.OpComplete ? 'op-complete' : ''}"
+                                        data-asm-seq="${op.AssemblySeq}" data-opr-seq="${op.OprSeq}">
+                                        <td>${op.OprSeq}</td>
+                                        <td>${op.OpCode}</td>
+                                        <td>${op.ProdStandard ? op.ProdStandard.toFixed(2) : '-'}</td>
+                                        <td>${Math.floor(op.QtyCompleted)}</td>
+                                        <td class="last-entry-cell">-</td>
+                                        <td><input type="checkbox" ${op.OpComplete ? 'checked' : ''} disabled></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    // Load last entry dates for operations
+                    loadOperationLastEntries(jobNum, container);
+                }
+            }
+
+            // Render materials
+            const mtlContainer = container.querySelector('#materials-container');
+            if (mtlContainer) {
+                if (materials.length === 0) {
+                    mtlContainer.innerHTML = '<div class="detail-empty">No materials required</div>';
+                } else {
+                    let displayMaterials = materials;
+                    let showMoreBtn = false;
+                    if (materialLimit && materials.length > materialLimit) {
+                        showMoreBtn = true;
+                        displayMaterials = materials.slice(0, materialLimit);
+                    }
+
+                    let html = `
+                        ${showMoreBtn ? `<div class="mtl-count">(showing ${materialLimit} of ${materials.length})</div>` : ''}
+                        <table class="mtl-table">
+                            <thead>
+                                <tr>
+                                    <th>Part</th>
+                                    <th>Description</th>
+                                    <th>Req</th>
+                                    <th>On Hand</th>
+                                    <th>Demand</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${displayMaterials.map(m => {
+                                    const isSheet = (m.ReqUOM === 'SH100' || m.OnHandUOM === 'SH100');
+                                    const reqQty = isSheet ? m.RequiredQty.toFixed(2) : Math.floor(m.RequiredQty);
+                                    const ohQty = isSheet ? (m.OnHandQty || 0).toFixed(2) : Math.floor(m.OnHandQty || 0);
+                                    const demQty = isSheet ? (m.DemandQty || 0).toFixed(2) : Math.floor(m.DemandQty || 0);
+                                    const onHand = m.OnHandQty || 0;
+                                    const demand = m.DemandQty || m.RequiredQty;
+                                    const required = m.RequiredQty || 0;
+                                    let status = 'missing';
+                                    if (onHand >= demand) status = 'star';
+                                    else if (onHand >= required) status = 'check';
+                                    else if (onHand > 0) status = 'partial';
+                                    return `
+                                    <tr class="mtl-${status}">
+                                        <td>${m.PartNum}</td>
+                                        <td>${m.PartDescription || '-'}</td>
+                                        <td>${reqQty} <span class="uom">${m.ReqUOM || ''}</span></td>
+                                        <td>${ohQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                                        <td>${demQty} <span class="uom">${m.OnHandUOM || ''}</span></td>
+                                        <td>
+                                            ${status === 'star' ? '<span class="mtl-star">★</span>' :
+                                              status === 'check' ? '<span class="mtl-check">✓</span>' :
+                                              status === 'partial' ? '<span class="mtl-partial">⚠</span>' :
+                                              '<span class="mtl-missing">✗</span>'}
+                                        </td>
+                                    </tr>
+                                `}).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    if (showMoreBtn) {
+                        html += `<button class="show-more-btn" onclick="showAllMaterials('${jobNum}', ${asmSeq}, ${oprSeq})">Show All ${materials.length} Materials</button>`;
+                    }
+                    mtlContainer.innerHTML = html;
+                }
+            }
+        })
+        .catch(err => {
+            console.error('Error loading job details:', err);
+            const opsContainer = container.querySelector('#operations-container');
+            if (opsContainer) {
+                opsContainer.innerHTML = '<div class="detail-empty">Error loading operations</div>';
+            }
+            const mtlContainer = container.querySelector('#materials-container');
+            if (mtlContainer) {
+                mtlContainer.innerHTML = '<div class="detail-empty">Error loading materials</div>';
+            }
+        });
+}
+
+function loadOperationLastEntries(jobNum, container) {
+    // Load last entry dates for operations on-demand (performance optimization)
+    // This was moved out of the bulk query due to expensive LaborDtl lookups
+    fetch(`/api/job/${jobNum}/last_entries`)
+        .then(response => response.json())
+        .then(entries => {
+            // entries is a dict mapping 'AssemblySeq-OprSeq' -> date string
+            const opsTable = container.querySelector('.ops-table tbody');
+            if (!opsTable) return;
+            
+            opsTable.querySelectorAll('tr').forEach(row => {
+                const asmSeq = row.dataset.asmSeq;
+                const oprSeq = row.dataset.oprSeq;
+                const key = `${asmSeq}-${oprSeq}`;
+                const date = entries[key];
+                
+                // Update the Last column
+                const lastCell = row.querySelector('.last-entry-cell');
+                if (lastCell && date) {
+                    lastCell.textContent = formatLastEntry(date);
+                }
+            });
+        })
+        .catch(err => console.error('Error loading operation last entries:', err));
 }
 
 function showAllMaterials(jobNum, asmSeq, oprSeq) {
@@ -1090,9 +1205,9 @@ document.querySelectorAll('th.sortable').forEach(th => {
 
 function sortTable(column, direction) {
     const tbody = document.getElementById('job-tbody');
-    const rows = Array.from(tbody.querySelectorAll('.job-row'));
     
-    rows.sort((a, b) => {
+    // Sort allJobRows (the preserved list) not just DOM
+    allJobRows.sort((a, b) => {
         let aVal, bVal;
         a.querySelectorAll('td[data-value]').forEach((td, idx) => {
             const th = document.querySelectorAll('th.sortable')[idx];
@@ -1114,7 +1229,10 @@ function sortTable(column, direction) {
         return direction === 'asc' ? compare : -compare;
     });
     
-    rows.forEach(row => tbody.appendChild(row));
+    // Only re-append to DOM if grouping is not active (grouping handles its own display)
+    if (!groupingEnabled || groupByColumns.length === 0) {
+        allJobRows.forEach(row => tbody.appendChild(row));
+    }
 }
 
 function updateSortIndicators() {
@@ -1151,6 +1269,69 @@ if (selectAllCheckbox) {
 applyFilters();
 
 // ============================================================================
+// KEYBOARD NAVIGATION
+// ============================================================================
+
+// Make all job rows focusable
+document.querySelectorAll('.job-row').forEach(row => {
+    row.setAttribute('tabindex', '0');
+});
+
+// Get visible rows in order
+function getVisibleRows() {
+    return Array.from(document.querySelectorAll('.job-row')).filter(row => 
+        row.style.display !== 'none' && !row.classList.contains('group-hidden')
+    );
+}
+
+// Handle keyboard navigation on job table
+document.getElementById('job-tbody')?.addEventListener('keydown', function(e) {
+    const target = e.target;
+    if (!target.classList.contains('job-row')) return;
+    
+    const visibleRows = getVisibleRows();
+    const currentIndex = visibleRows.indexOf(target);
+    
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            if (currentIndex < visibleRows.length - 1) {
+                visibleRows[currentIndex + 1].focus();
+            }
+            break;
+            
+        case 'ArrowUp':
+            e.preventDefault();
+            if (currentIndex > 0) {
+                visibleRows[currentIndex - 1].focus();
+            }
+            break;
+            
+        case 'Enter':
+            e.preventDefault();
+            target.click(); // Toggle expand/collapse
+            break;
+            
+        case ' ': // Space
+            e.preventDefault();
+            const checkbox = target.querySelector('.row-select');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+            break;
+            
+        case 'Tab':
+            // Let Tab move to next/prev row instead of default behavior
+            const nextIndex = e.shiftKey ? currentIndex - 1 : currentIndex + 1;
+            if (nextIndex >= 0 && nextIndex < visibleRows.length) {
+                e.preventDefault();
+                visibleRows[nextIndex].focus();
+            }
+            break;
+    }
+});
+
+// ============================================================================
 // LABOR CHECK-IN FUNCTIONALITY
 // ============================================================================
 
@@ -1183,6 +1364,7 @@ async function loadActiveLabor() {
             });
             console.log('activeLabor map:', activeLabor);
             updateStartEndButtons();
+            updateActiveLaborIndicators();
         } else {
             console.log('Active labor response not ok:', await response.text());
         }
@@ -1214,6 +1396,22 @@ function updateStartEndButtons() {
     }
 }
 
+// Update row indicators for active labor (green left border)
+function updateActiveLaborIndicators() {
+    // Remove active-labor class from all rows
+    document.querySelectorAll('.job-row.active-labor').forEach(row => {
+        row.classList.remove('active-labor');
+    });
+    
+    // Add active-labor class to rows with active labor
+    Object.keys(activeLabor).forEach(jobKey => {
+        const row = document.querySelector(`.job-row[data-jobkey="${jobKey}"]`);
+        if (row) {
+            row.classList.add('active-labor');
+        }
+    });
+}
+
 // Start Activity
 async function startActivity() {
     const emp = getCurrentEmployee();
@@ -1236,8 +1434,12 @@ async function startActivity() {
     const resourceId = currentOp.ResourceID || '';
     const opCode = currentOp.OpCode || '';
     const jcDept = currentOp.JCDept || '';
+    const capabilityId = currentOp.CapabilityID || '';
     
-    console.log('Starting activity:', { jobNum, asmSeq, oprSeq, resourceGrpId, resourceId, opCode, jcDept });
+    console.log('Starting activity:', { jobNum, asmSeq, oprSeq, resourceGrpId, resourceId, opCode, jcDept, capabilityId });
+    console.log('jobDetails[jobKey]:', JSON.stringify(details));
+    console.log('operations:', JSON.stringify(operations));
+    console.log('currentOp:', JSON.stringify(currentOp));
     
     const startBtn = document.getElementById('panel-start-btn');
     startBtn.disabled = true;
@@ -1255,7 +1457,8 @@ async function startActivity() {
                 resourceGrpId: resourceGrpId,
                 resourceId: resourceId,
                 opCode: opCode,
-                jcDept: jcDept
+                jcDept: jcDept,
+                capabilityId: capabilityId
             })
         });
         
@@ -1294,7 +1497,9 @@ let singleEndState = {
     availQty: null,
     isFirstOp: false,
     jobNum: '',
-    prodQty: 0
+    prodQty: 0,
+    mtlStatus: 'none',
+    maxMtlQty: null  // null means no material constraint
 };
 
 function showSingleEndModal() {
@@ -1361,7 +1566,10 @@ function showSingleEndModal() {
     const prodQty = left + qtyCompleted;
     const isFirstOp = currentExpandedRow.dataset.isFirstOp === '1' || currentExpandedRow.dataset.isFirstOp === 'True';
     const availQty = isFirstOp ? null : (parseInt(currentExpandedRow.dataset.qtyAvailable) || 0);
-    const mtlStatus = currentExpandedRow.dataset.mtlStatus || 'none';
+    
+    // Get material status from labor record (more accurate than row data)
+    const mtlStatus = labor.MtlStatus || 'none';
+    const maxMtlQty = labor.MaxMtlQty;  // null if no constraint
     
     // Store state for validation
     singleEndState = {
@@ -1369,7 +1577,9 @@ function showSingleEndModal() {
         availQty: availQty,
         isFirstOp: isFirstOp,
         jobNum: jobNum,
-        prodQty: prodQty
+        prodQty: prodQty,
+        mtlStatus: mtlStatus,
+        maxMtlQty: maxMtlQty
     };
     
     let mtlIcon = '-';
@@ -1450,8 +1660,16 @@ function showSingleEndModal() {
     document.getElementById('single-end-qty').value = '';
     document.getElementById('single-end-scrap').value = '0';
     document.getElementById('single-end-done').checked = false;
-    document.getElementById('single-end-warning').style.display = 'none';
     document.getElementById('single-end-error').textContent = '';
+    
+    // Show material warning immediately if materials are missing
+    const warningEl = document.getElementById('single-end-warning');
+    if (mtlStatus === 'missing') {
+        warningEl.innerHTML = `⚠️ <strong>Warning:</strong> Materials not available for this job`;
+        warningEl.style.display = 'block';
+    } else {
+        warningEl.style.display = 'none';
+    }
     
     singleEndModal.classList.remove('hidden');
     document.getElementById('single-end-qty').focus();
@@ -1472,9 +1690,24 @@ function validateSingleEndQty() {
         doneCheckbox.checked = false;
     }
     
-    // Show warning if qty > available (for non-first ops)
+    // Collect all warnings
+    const warnings = [];
+    
+    // Warning if qty > available (for non-first ops)
     if (!singleEndState.isFirstOp && singleEndState.availQty !== null && qty > singleEndState.availQty) {
-        warning.innerHTML = `⚠️ <strong>Warning:</strong> Quantity (${qty}) exceeds available from prior operation (${singleEndState.availQty})`;
+        warnings.push(`Quantity (${qty}) exceeds available from prior operation (${singleEndState.availQty})`);
+    }
+    
+    // Material warnings
+    if (singleEndState.mtlStatus === 'missing') {
+        warnings.push('Materials not available for this job');
+    } else if (singleEndState.mtlStatus === 'partial' && singleEndState.maxMtlQty !== null && qty > singleEndState.maxMtlQty) {
+        warnings.push(`Quantity (${qty}) exceeds material availability (${singleEndState.maxMtlQty} max)`);
+    }
+    
+    // Display warnings
+    if (warnings.length > 0) {
+        warning.innerHTML = `⚠️ <strong>Warning:</strong> ${warnings.join('<br>⚠️ ')}`;
         warning.style.display = 'block';
     } else {
         warning.style.display = 'none';
@@ -1494,11 +1727,6 @@ async function submitSingleEnd() {
     const setJobQty = document.getElementById('single-end-set-job-qty').checked;
     // If setting job qty to match completed, automatically mark complete
     const markComplete = setJobQty || document.getElementById('single-end-done').checked;
-    
-    if (laborQty <= 0 && scrapQty <= 0) {
-        document.getElementById('single-end-error').textContent = 'Please enter a quantity';
-        return;
-    }
     
     const submitBtn = document.getElementById('single-end-submit');
     submitBtn.disabled = true;
@@ -1540,6 +1768,7 @@ async function submitSingleEnd() {
                 laborDtlSeq: pendingSingleEnd.laborDtlSeq,
                 laborQty: laborQty,
                 scrapQty: scrapQty,
+                scrapReasonCode: scrapQty > 0 ? 'SCRAP' : '',
                 complete: markComplete
             })
         });
@@ -1608,9 +1837,22 @@ function showMassEndModal() {
         const key = `${rec.JobNum}-${rec.AssemblySeq}-${rec.OprSeq}`;
         const availDisplay = rec.QtyAvailable === null ? '-' : rec.QtyAvailable;
         const isFirstOp = rec.QtyAvailable === null;
+        const qtyCompleted = rec.QtyCompleted || 0;
+        const mtlStatus = rec.MtlStatus || 'none';
+        const maxMtlQty = rec.MaxMtlQty;  // null if no constraint
+        
+        // Material status icon
+        let mtlIcon = '-';
+        if (mtlStatus === 'star') mtlIcon = '<span class="mtl-star">★</span>';
+        else if (mtlStatus === 'check') mtlIcon = '<span class="mtl-check">✓</span>';
+        else if (mtlStatus === 'partial') mtlIcon = '<span class="mtl-partial">⚠</span>';
+        else if (mtlStatus === 'missing') mtlIcon = '<span class="mtl-missing">✗</span>';
+        
         return `
             <tr data-labor-key="${key}" data-hed="${rec.LaborHedSeq}" data-dtl="${rec.LaborDtlSeq}" 
-                data-left="${rec.QtyLeft || 0}" data-avail="${rec.QtyAvailable}" data-first-op="${isFirstOp}">
+                data-left="${rec.QtyLeft || 0}" data-avail="${rec.QtyAvailable}" data-first-op="${isFirstOp}"
+                data-job-num="${rec.JobNum}" data-qty-completed="${qtyCompleted}"
+                data-mtl-status="${mtlStatus}" data-max-mtl-qty="${maxMtlQty}">
                 <td><input type="checkbox" class="mass-end-check" checked></td>
                 <td>${rec.JobNum}</td>
                 <td>${rec.PartNum || ''}</td>
@@ -1619,9 +1861,11 @@ function showMassEndModal() {
                 <td class="col-qty">${rec.ProdQty || 0}</td>
                 <td class="col-qty">${rec.QtyLeft || 0}</td>
                 <td class="col-qty">${availDisplay}</td>
+                <td class="col-mtl">${mtlIcon}</td>
                 <td class="col-input"><input type="number" class="mass-end-qty" min="0" step="1" value=""></td>
                 <td class="col-input"><input type="number" class="mass-end-scrap" min="0" step="1" value="0"></td>
                 <td class="col-done"><input type="checkbox" class="mass-end-done"></td>
+                <td class="col-done"><input type="checkbox" class="mass-end-upd-qty" ${isFirstOp ? 'checked' : ''} ${!isFirstOp ? 'disabled' : ''}></td>
             </tr>
         `;
     }).join('');
@@ -1629,6 +1873,16 @@ function showMassEndModal() {
     // Add input event listeners for qty validation
     tbody.querySelectorAll('.mass-end-qty').forEach(input => {
         input.addEventListener('input', validateMassEndRow);
+    });
+    
+    // When Upd Qty is checked, auto-check Done
+    tbody.querySelectorAll('.mass-end-upd-qty').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                const row = e.target.closest('tr');
+                row.querySelector('.mass-end-done').checked = true;
+            }
+        });
     });
     
     document.getElementById('mass-end-select-all').checked = true;
@@ -1744,16 +1998,22 @@ async function submitMassEnd() {
         const qty = parseFloat(row.querySelector('.mass-end-qty').value) || 0;
         const scrap = parseFloat(row.querySelector('.mass-end-scrap').value) || 0;
         const done = row.querySelector('.mass-end-done').checked;
+        const updQty = row.querySelector('.mass-end-upd-qty').checked;
+        const jobNum = row.dataset.jobNum;
+        const existingCompleted = parseFloat(row.dataset.qtyCompleted) || 0;
         
-        if (qty > 0 || scrap > 0) {
-            toEnd.push({
+        // Include all checked rows (even with 0 qty - allows stopping the clock)
+        toEnd.push({
                 laborHedSeq: parseInt(row.dataset.hed),
                 laborDtlSeq: parseInt(row.dataset.dtl),
                 laborQty: qty,
                 scrapQty: scrap,
-                complete: done
+                scrapReasonCode: scrap > 0 ? 'SCRAP' : '',
+                complete: updQty || done,  // Auto-complete if updating qty
+                updateJobQty: updQty,
+                jobNum: jobNum,
+                newJobQty: existingCompleted + qty
             });
-        }
     });
     
     if (toEnd.length === 0) {
@@ -1768,9 +2028,28 @@ async function submitMassEnd() {
     
     let success = 0;
     let failed = 0;
+    let anyQtyUpdated = false;
     
     for (const item of toEnd) {
         try {
+            // Update job quantity first if requested
+            if (item.updateJobQty && item.laborQty > 0) {
+                anyQtyUpdated = true;
+                const qtyResponse = await fetch('/api/job/update-quantity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jobNum: item.jobNum,
+                        newQty: item.newJobQty
+                    })
+                });
+                const qtyResult = await qtyResponse.json();
+                if (!qtyResult.success) {
+                    console.error('Failed to update job qty for', item.jobNum, ':', qtyResult.error);
+                    // Continue anyway - don't fail the whole operation
+                }
+            }
+            
             const response = await fetch('/api/labor/end', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1780,6 +2059,7 @@ async function submitMassEnd() {
                     laborDtlSeq: item.laborDtlSeq,
                     laborQty: item.laborQty,
                     scrapQty: item.scrapQty,
+                    scrapReasonCode: item.scrapReasonCode || '',
                     complete: item.complete
                 })
             });
@@ -1796,6 +2076,10 @@ async function submitMassEnd() {
     if (failed === 0) {
         hideMassEndModal();
         updateStartEndButtons();
+        // Reload page to reflect qty changes if any were updated
+        if (anyQtyUpdated) {
+            location.reload();
+        }
     } else {
         document.getElementById('mass-end-error').textContent = `Ended ${success}, failed ${failed}`;
         // Refresh the table
@@ -1850,21 +2134,34 @@ async function massStart() {
     
     for (const row of selectedRows) {
         const jobKey = row.dataset.jobkey;
-        
+
         // Skip if already active
         if (activeLabor[jobKey]) {
             continue;
         }
-        
+
         const jobNum = row.dataset.job;
         const asmSeq = parseInt(row.dataset.asm);
         const oprSeq = parseInt(row.dataset.opr);
-        
+
+        // Load job details on-demand if not already cached
+        if (!jobDetails[jobKey] || !jobDetails[jobKey].operations || jobDetails[jobKey].operations.length === 0) {
+            try {
+                const detailResp = await fetch(`/api/job/${jobNum}/${asmSeq}/${oprSeq}`);
+                const detailData = await detailResp.json();
+                if (!jobDetails[jobKey]) jobDetails[jobKey] = {};
+                jobDetails[jobKey].operations = detailData.operations || [];
+                jobDetails[jobKey].materials = detailData.materials || [];
+            } catch (err) {
+                console.error('Failed to load job details for', jobNum, err);
+            }
+        }
+
         const details = jobDetails[jobKey] || {};
         const operations = details.operations || [];
         const currentOp = operations.find(op => op.OprSeq == oprSeq) || {};
-        
-        console.log('Mass starting:', jobNum, { resourceGrpId: currentOp.ResourceGrpID, resourceId: currentOp.ResourceID, opCode: currentOp.OpCode, jcDept: currentOp.JCDept });
+
+        console.log('Mass starting:', jobNum, { resourceGrpId: currentOp.ResourceGrpID, resourceId: currentOp.ResourceID, opCode: currentOp.OpCode, jcDept: currentOp.JCDept, capabilityId: currentOp.CapabilityID });
         
         try {
             const response = await fetch('/api/labor/start', {
@@ -1878,7 +2175,8 @@ async function massStart() {
                     resourceGrpId: currentOp.ResourceGrpID || '',
                     resourceId: currentOp.ResourceID || '',
                     opCode: currentOp.OpCode || '',
-                    jcDept: currentOp.JCDept || ''
+                    jcDept: currentOp.JCDept || '',
+                    capabilityId: currentOp.CapabilityID || ''
                 })
             });
             const result = await response.json();
@@ -1980,5 +2278,604 @@ loadJobDetails = function(...args) {
     originalLoadJobDetails(...args);
     setTimeout(updateStartEndButtons, 100);
 };
+
+// ============================================================================
+// GRID GROUPING FEATURE
+// ============================================================================
+
+const STORAGE_KEY = `queue-grouping-${workcellId}`;
+const MAX_GROUP_LEVELS = 3;
+
+// Grouping state
+let groupingEnabled = false;
+let groupByColumns = [];  // Array of column keys, e.g. ['PartNum', 'OpCode']
+let collapsedGroups = new Set();  // Set of group keys that are collapsed
+
+// Column config for groupable columns
+const groupableColumns = {
+    'StartDate': { label: 'Start Date', dataAttr: 'startdate' },
+    'OpCode': { label: 'Operation', dataAttr: 'opcode' },
+    'JobNum': { label: 'Job #', dataAttr: 'job' },
+    'PartNum': { label: 'Part', dataAttr: 'partnum' },
+    'PartDescription': { label: 'Description', dataAttr: 'description' }
+};
+
+// DOM elements
+const groupingToggleBtn = document.getElementById('grouping-toggle-btn');
+const groupDropZone = document.getElementById('group-drop-zone');
+const expandAllBtn = document.getElementById('expand-all-btn');
+const collapseAllBtn = document.getElementById('collapse-all-btn');
+
+// Get row value for a column (handling data attributes)
+function getRowGroupValue(row, column) {
+    const config = groupableColumns[column];
+    if (!config) return '';
+    
+    // Special handling for description - get from cell content
+    if (column === 'PartDescription') {
+        const descCell = row.querySelector('.col-desc');
+        return descCell ? descCell.textContent.trim() : '';
+    }
+    
+    // Special handling for StartDate - get from cell content
+    if (column === 'StartDate') {
+        const dateCell = row.querySelector('.col-date');
+        return dateCell ? dateCell.textContent.trim() : '';
+    }
+    
+    // Use data attribute
+    return row.dataset[config.dataAttr] || '';
+}
+
+// Build grouped hierarchy from filtered rows
+function buildGroupHierarchy(rows) {
+    if (groupByColumns.length === 0) {
+        return { rows: rows, groups: null };
+    }
+    
+    // Build nested groups
+    const groups = new Map();
+    
+    rows.forEach(row => {
+        let currentLevel = groups;
+        let groupPath = [];
+        
+        for (let i = 0; i < groupByColumns.length; i++) {
+            const column = groupByColumns[i];
+            const value = getRowGroupValue(row, column);
+            groupPath.push(value);
+            const groupKey = groupPath.join('|||');
+            
+            if (!currentLevel.has(value)) {
+                currentLevel.set(value, {
+                    column: column,
+                    value: value,
+                    key: groupKey,
+                    level: i,
+                    rows: [],
+                    subgroups: new Map()
+                });
+            }
+            
+            const group = currentLevel.get(value);
+            
+            if (i === groupByColumns.length - 1) {
+                // Leaf level - add row
+                group.rows.push(row);
+            } else {
+                // Continue to next level
+                currentLevel = group.subgroups;
+            }
+        }
+    });
+    
+    return { rows: null, groups: groups };
+}
+
+// Count total rows in a group (including subgroups)
+function countGroupRows(group) {
+    let count = group.rows.length;
+    group.subgroups.forEach(subgroup => {
+        count += countGroupRows(subgroup);
+    });
+    return count;
+}
+
+// Flatten groups for display, respecting collapsed state
+function flattenGroups(groups, level = 0) {
+    const result = [];
+    
+    // Sort groups by value
+    const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+        return String(a.value).localeCompare(String(b.value));
+    });
+    
+    sortedGroups.forEach(group => {
+        const isCollapsed = collapsedGroups.has(group.key);
+        const rowCount = countGroupRows(group);
+        
+        // Add group header
+        result.push({
+            type: 'group-header',
+            column: group.column,
+            value: group.value,
+            key: group.key,
+            level: level,
+            count: rowCount,
+            collapsed: isCollapsed
+        });
+        
+        if (!isCollapsed) {
+            // Add subgroups or rows
+            if (group.subgroups.size > 0) {
+                result.push(...flattenGroups(group.subgroups, level + 1));
+            } else {
+                // Sort rows within group according to current sort
+                const sortedRows = sortRowsWithinGroup(group.rows);
+                sortedRows.forEach(row => {
+                    result.push({ type: 'row', element: row });
+                });
+            }
+        }
+    });
+    
+    return result;
+}
+
+// Sort rows within a group using current sort settings
+function sortRowsWithinGroup(rows) {
+    if (!currentSort.column) return rows;
+    
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+        let aVal, bVal;
+        const col = currentSort.column;
+        
+        // Get values based on column
+        if (col === 'QtyLeft' || col === 'QtyAvailable') {
+            aVal = parseFloat(a.querySelector(`.col-qty:${col === 'QtyLeft' ? 'first-of-type' : 'last-of-type'}`)?.textContent) || 0;
+            bVal = parseFloat(b.querySelector(`.col-qty:${col === 'QtyLeft' ? 'first-of-type' : 'last-of-type'}`)?.textContent) || 0;
+        } else if (col === 'MtlStatus') {
+            const statusOrder = { '★': 0, '✓': 1, '◐': 2, '✗': 3, '—': 4 };
+            aVal = statusOrder[a.querySelector('.col-mtl')?.textContent.trim()] ?? 5;
+            bVal = statusOrder[b.querySelector('.col-mtl')?.textContent.trim()] ?? 5;
+        } else {
+            aVal = getRowGroupValue(a, col) || '';
+            bVal = getRowGroupValue(b, col) || '';
+        }
+        
+        let cmp = 0;
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+            cmp = aVal - bVal;
+        } else {
+            cmp = String(aVal).localeCompare(String(bVal));
+        }
+        
+        return currentSort.direction === 'desc' ? -cmp : cmp;
+    });
+    
+    return sorted;
+}
+
+// Create a group header row element
+function createGroupHeaderRow(headerData) {
+    const tr = document.createElement('tr');
+    tr.className = `group-header-row ${headerData.collapsed ? 'collapsed' : 'expanded'}`;
+    tr.dataset.groupKey = headerData.key;
+    tr.dataset.level = headerData.level;
+    
+    // Count columns for colspan
+    const colCount = document.querySelectorAll('#job-table thead th').length;
+    
+    const td = document.createElement('td');
+    td.colSpan = colCount;
+    
+    const columnLabel = groupableColumns[headerData.column]?.label || headerData.column;
+    
+    td.innerHTML = `
+        <div class="group-header-cell">
+            <span class="group-expand-icon">▶</span>
+            <span class="group-label">${columnLabel}:</span>
+            <span class="group-value">${headerData.value || '(empty)'}</span>
+            <span class="group-count">(${headerData.count} job${headerData.count !== 1 ? 's' : ''})</span>
+        </div>
+    `;
+    
+    tr.appendChild(td);
+    
+    // Toggle on click
+    tr.addEventListener('click', () => toggleGroup(headerData.key));
+    
+    return tr;
+}
+
+// Toggle group collapsed/expanded state
+function toggleGroup(groupKey) {
+    if (collapsedGroups.has(groupKey)) {
+        // Expanding - also expand all child groups
+        collapsedGroups.delete(groupKey);
+        // Remove any child group keys (they start with this key + separator)
+        const prefix = groupKey + '|||';
+        collapsedGroups.forEach(key => {
+            if (key.startsWith(prefix)) {
+                collapsedGroups.delete(key);
+            }
+        });
+    } else {
+        collapsedGroups.add(groupKey);
+    }
+    
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Expand all groups
+function expandAllGroups() {
+    collapsedGroups.clear();
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Collapse all groups
+function collapseAllGroups() {
+    // Need to collect all group keys from current hierarchy
+    const hierarchy = buildGroupHierarchy(filteredRows);
+    if (hierarchy.groups) {
+        collectAllGroupKeys(hierarchy.groups, collapsedGroups);
+    }
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Collect all group keys recursively
+function collectAllGroupKeys(groups, keySet) {
+    groups.forEach(group => {
+        keySet.add(group.key);
+        if (group.subgroups.size > 0) {
+            collectAllGroupKeys(group.subgroups, keySet);
+        }
+    });
+}
+
+// Main render function for grouped table
+function renderGroupedTable() {
+    const tbody = document.getElementById('job-tbody');
+    if (!tbody) return;
+    
+    // If grouping is not enabled or no groups, use normal pagination
+    if (!groupingEnabled || groupByColumns.length === 0) {
+        showCurrentPage();
+        return;
+    }
+    
+    // Build and flatten hierarchy
+    const hierarchy = buildGroupHierarchy(filteredRows);
+    const flatItems = flattenGroups(hierarchy.groups);
+    
+    // Count visible data rows (from expanded groups)
+    const visibleDataRows = flatItems.filter(item => item.type === 'row');
+    
+    // Clear and rebuild tbody - show ALL items (no pagination in group mode)
+    tbody.innerHTML = '';
+    
+    flatItems.forEach(item => {
+        if (item.type === 'group-header') {
+            tbody.appendChild(createGroupHeaderRow(item));
+        } else {
+            // Reset display style (may have been hidden by non-grouped pagination)
+            item.element.style.display = '';
+            tbody.appendChild(item.element);
+        }
+    });
+    
+    // Update display - show total visible rows, hide pagination
+    const visibleCountEl = document.getElementById('visible-count');
+    if (visibleCountEl) {
+        visibleCountEl.textContent = visibleDataRows.length;
+    }
+    
+    // Hide pagination controls in group mode
+    const paginationControls = document.getElementById('pagination-controls');
+    if (paginationControls) {
+        paginationControls.style.display = 'none';
+    }
+}
+
+// Update pagination info for grouped view
+function updatePaginationDisplay(totalDataRows) {
+    const pageInfo = document.getElementById('page-info');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const jobCount = document.getElementById('job-count');
+    
+    if (pageInfo) {
+        const start = ((currentPage - 1) * PAGE_SIZE) + 1;
+        const end = Math.min(currentPage * PAGE_SIZE, totalDataRows);
+        pageInfo.textContent = totalDataRows > 0 ? `${start}-${end} of ${totalDataRows}` : '0 jobs';
+    }
+    
+    if (prevBtn) prevBtn.disabled = currentPage <= 1;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+    
+    if (jobCount) {
+        const filteredCount = filteredRows.length;
+        const totalCount = allRows.length;
+        jobCount.textContent = filteredCount === totalCount 
+            ? `${totalCount} jobs` 
+            : `Showing ${filteredCount} of ${totalCount} jobs`;
+    }
+}
+
+// Toggle grouping on/off
+function toggleGrouping() {
+    groupingEnabled = !groupingEnabled;
+    
+    if (groupingEnabled) {
+        groupingToggleBtn.classList.add('active');
+        groupingToggleBtn.querySelector('.toggle-icon').textContent = '⊟';
+        groupDropZone.classList.remove('hidden');
+        enableColumnDragging();
+    } else {
+        groupingToggleBtn.classList.remove('active');
+        groupingToggleBtn.querySelector('.toggle-icon').textContent = '⊞';
+        groupDropZone.classList.add('hidden');
+        disableColumnDragging();
+        groupByColumns = [];
+        collapsedGroups.clear();
+        updateDropZoneDisplay();
+    }
+    
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Enable dragging on column headers
+function enableColumnDragging() {
+    const headers = document.querySelectorAll('#job-table th[data-sort]');
+    
+    headers.forEach(th => {
+        const column = th.dataset.sort;
+        if (!groupableColumns[column]) return;
+        
+        th.draggable = true;
+        th.classList.add('draggable', 'drag-handle');
+        
+        th.addEventListener('dragstart', handleDragStart);
+        th.addEventListener('dragend', handleDragEnd);
+    });
+}
+
+// Disable dragging on column headers
+function disableColumnDragging() {
+    const headers = document.querySelectorAll('#job-table th.draggable');
+    
+    headers.forEach(th => {
+        th.draggable = false;
+        th.classList.remove('draggable', 'drag-handle', 'dragging');
+        
+        th.removeEventListener('dragstart', handleDragStart);
+        th.removeEventListener('dragend', handleDragEnd);
+    });
+}
+
+// Drag event handlers
+let draggedColumn = null;
+
+function handleDragStart(e) {
+    draggedColumn = e.target.dataset.sort;
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', draggedColumn);
+}
+
+function handleDragEnd(e) {
+    e.target.classList.remove('dragging');
+    draggedColumn = null;
+}
+
+// Drop zone event handlers
+if (groupDropZone) {
+    groupDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        groupDropZone.classList.add('drag-over');
+    });
+    
+    groupDropZone.addEventListener('dragleave', () => {
+        groupDropZone.classList.remove('drag-over');
+    });
+    
+    groupDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        groupDropZone.classList.remove('drag-over');
+        
+        const column = e.dataTransfer.getData('text/plain');
+        if (column && groupableColumns[column]) {
+            addGroupByColumn(column);
+        }
+    });
+}
+
+// Add a column to group by
+function addGroupByColumn(column) {
+    // Check if already grouped by this column
+    if (groupByColumns.includes(column)) return;
+    
+    // Check max levels
+    if (groupByColumns.length >= MAX_GROUP_LEVELS) {
+        alert(`Maximum ${MAX_GROUP_LEVELS} grouping levels allowed`);
+        return;
+    }
+    
+    groupByColumns.push(column);
+    collapsedGroups.clear();  // Start with all groups EXPANDED
+    
+    updateDropZoneDisplay();
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Remove a column from group by
+function removeGroupByColumn(column) {
+    const idx = groupByColumns.indexOf(column);
+    if (idx === -1) return;
+    
+    groupByColumns.splice(idx, 1);
+    collapsedGroups.clear();  // Reset to all expanded
+    
+    updateDropZoneDisplay();
+    renderGroupedTable();
+    saveGroupingState();
+}
+
+// Update the drop zone display with pills
+function updateDropZoneDisplay() {
+    const hint = groupDropZone.querySelector('.group-drop-zone-hint');
+    const controls = groupDropZone.querySelector('.group-controls');
+    
+    // Remove existing pills
+    groupDropZone.querySelectorAll('.group-pill').forEach(p => p.remove());
+    
+    if (groupByColumns.length === 0) {
+        hint.style.display = '';
+        controls.style.display = 'none';
+    } else {
+        hint.style.display = 'none';
+        controls.style.display = 'flex';
+        
+        // Add pills
+        groupByColumns.forEach((column, idx) => {
+            const pill = document.createElement('span');
+            pill.className = 'group-pill';
+            
+            const label = groupableColumns[column]?.label || column;
+            pill.innerHTML = `
+                ${label}
+                <button class="pill-remove" title="Remove grouping">×</button>
+                ${idx < groupByColumns.length - 1 ? '<span class="pill-arrow">→</span>' : ''}
+            `;
+            
+            pill.querySelector('.pill-remove').addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeGroupByColumn(column);
+            });
+            
+            // Insert before controls
+            groupDropZone.insertBefore(pill, controls);
+        });
+    }
+}
+
+// Save grouping state to localStorage
+function saveGroupingState() {
+    const state = {
+        enabled: groupingEnabled,
+        columns: groupByColumns,
+        collapsed: Array.from(collapsedGroups)
+    };
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('Failed to save grouping state:', e);
+    }
+}
+
+// Load grouping state from localStorage
+function loadGroupingState() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const state = JSON.parse(saved);
+            groupingEnabled = state.enabled || false;
+            groupByColumns = state.columns || [];
+            collapsedGroups = new Set(state.collapsed || []);
+            
+            // Apply state to UI
+            if (groupingEnabled) {
+                groupingToggleBtn?.classList.add('active');
+                if (groupingToggleBtn) {
+                    groupingToggleBtn.querySelector('.toggle-icon').textContent = '⊟';
+                }
+                groupDropZone?.classList.remove('hidden');
+                enableColumnDragging();
+                updateDropZoneDisplay();
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load grouping state:', e);
+    }
+}
+
+// Wire up grouping controls
+if (groupingToggleBtn) {
+    groupingToggleBtn.addEventListener('click', toggleGrouping);
+}
+
+if (expandAllBtn) {
+    expandAllBtn.addEventListener('click', expandAllGroups);
+}
+
+if (collapseAllBtn) {
+    collapseAllBtn.addEventListener('click', collapseAllGroups);
+}
+
+// Override showCurrentPage to use grouped rendering when enabled
+const originalShowCurrentPage = showCurrentPage;
+showCurrentPage = function() {
+    // Show pagination controls (in case they were hidden by group mode)
+    const paginationControls = document.getElementById('pagination-controls');
+    if (paginationControls) {
+        paginationControls.style.display = '';
+    }
+    
+    if (groupingEnabled && groupByColumns.length > 0) {
+        renderGroupedTable();
+    } else {
+        // Restore all rows to tbody before applying pagination
+        // (they may have been removed by grouping)
+        const tbody = document.getElementById('job-tbody');
+        if (tbody && allJobRows.length > 0) {
+            tbody.innerHTML = '';
+            allJobRows.forEach(row => tbody.appendChild(row));
+        }
+        originalShowCurrentPage();
+    }
+};
+
+// Override applyFilters to trigger grouped rendering
+const originalApplyFilters = applyFilters;
+applyFilters = function() {
+    originalApplyFilters();
+    // Note: originalApplyFilters calls showCurrentPage, which will call renderGroupedTable if grouping is enabled
+    // So we only need to handle the collapsed groups cleanup here
+    if (groupingEnabled && groupByColumns.length > 0) {
+        // Rebuild collapsed groups set since filtered data changed
+        const hierarchy = buildGroupHierarchy(filteredRows);
+        if (hierarchy.groups) {
+            // Keep only collapsed groups that still exist
+            const newCollapsed = new Set();
+            const existingKeys = new Set();
+            collectAllGroupKeys(hierarchy.groups, existingKeys);
+            collapsedGroups.forEach(key => {
+                if (existingKeys.has(key)) {
+                    newCollapsed.add(key);
+                }
+            });
+            collapsedGroups = newCollapsed;
+        }
+        // renderGroupedTable was already called via showCurrentPage override
+    }
+};
+
+// Load saved state on page load
+loadGroupingState();
+
+// Initial render if grouping is enabled
+if (groupingEnabled && groupByColumns.length > 0) {
+    setTimeout(() => {
+        updateDropZoneDisplay();
+        renderGroupedTable();
+    }, 100);
+}
 </script>
 {% endblock %}

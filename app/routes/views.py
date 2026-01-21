@@ -1,8 +1,8 @@
 # app/routes/views.py
-# Version 5.1 — 2026-01-04
+# Version 5.2 — 2026-01-16
 #
 # Routes for The Queue web interface
-# Added Burn dashboard and Kanban receipt routes
+# Added /api/job/<job_num>/last_entries for on-demand LastEntryDate loading
 
 print("========== VIEWS.PY LOADED ==========")
 
@@ -11,7 +11,8 @@ from flask import Blueprint, render_template, jsonify, request, send_file, abort
 from app.logic.queries import (
     get_workcells, get_jobs_for_workcell, get_jobs_with_details, get_job_materials, 
     get_job_operations, get_job_header, get_workcell_config,
-    get_last_checkin, get_materials_for_workcell, get_billet_summary, WORKCELLS
+    get_last_checkin, get_materials_for_workcell, get_billet_summary, WORKCELLS,
+    get_operation_last_entries
 )
 from app.config import translate_pdf_path
 
@@ -50,6 +51,9 @@ def index():
 @views.route('/queue/<workcell_id>')
 def queue(workcell_id):
     """Queue page - show jobs ready for a work cell."""
+    import time
+    t_start = time.time()
+    
     # Get work cell info
     if workcell_id not in WORKCELLS:
         return render_template('error.html', message=f"Work cell '{workcell_id}' not found"), 404
@@ -119,7 +123,11 @@ def queue(workcell_id):
         )
     
     # Standard queue view
+    t1 = time.time()
     jobs = get_jobs_with_details(workcell_id)
+    t2 = time.time()
+    print(f"[TIMING] {workcell_id}: get_jobs_with_details took {t2-t1:.2f}s for {len(jobs)} jobs")
+    
     workcells = get_workcells()  # For the dropdown
     
     # Get materials list for dropdown if this workcell uses material grouping
@@ -128,7 +136,8 @@ def queue(workcell_id):
     # if workcell_config.get('group_by_material'):
     #     material_list = get_materials_for_workcell(workcell_id)
     
-    return render_template(
+    t3 = time.time()
+    response = render_template(
         'queue.html',
         workcell_id=workcell_id,
         workcell_name=workcell_name,
@@ -137,6 +146,10 @@ def queue(workcell_id):
         workcells=workcells,
         material_list=material_list
     )
+    t4 = time.time()
+    print(f"[TIMING] {workcell_id}: render_template took {t4-t3:.2f}s")
+    print(f"[TIMING] {workcell_id}: TOTAL server time {t4-t_start:.2f}s")
+    return response
 
 
 @views.route('/api/materials/<workcell_id>')
@@ -247,6 +260,17 @@ def api_job_detail(job_num, assembly_seq, opr_seq):
         'operations': operations,
         'materials': materials
     })
+
+
+@views.route('/api/job/<job_num>/last_entries')
+def api_job_last_entries(job_num):
+    """
+    API endpoint for operation last entry dates - loaded on-demand when row expands.
+    Returns dict mapping 'AssemblySeq-OprSeq' to last entry date string.
+    Separated from bulk load for performance (LaborDtl lookup is expensive).
+    """
+    entries = get_operation_last_entries(job_num)
+    return jsonify(entries)
 
 
 @views.route('/api/employee/<emp_id>')
@@ -374,15 +398,16 @@ def api_labor_start():
     resource_id = data.get('resourceId', '')
     op_code = data.get('opCode', '')
     jc_dept = data.get('jcDept', '')
+    capability_id = data.get('capabilityId', '')
     
-    print(f"[START] Parsed: emp={emp_id}, job={job_num}, asm={asm_seq}, opr={opr_seq}, resGrp={resource_grp_id}, resId={resource_id}, op={op_code}, dept={jc_dept}")
+    print(f"[START] Parsed: emp={emp_id}, job={job_num}, asm={asm_seq}, opr={opr_seq}, resGrp={resource_grp_id}, resId={resource_id}, op={op_code}, dept={jc_dept}, cap={capability_id}")
     
     if not all([emp_id, job_num, opr_seq is not None]):
         print(f"[START] Missing required fields: emp_id={emp_id}, job_num={job_num}, opr_seq={opr_seq}")
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
     
     print(f"[START] Calling start_activity...")
-    result = start_activity(emp_id, job_num, asm_seq, opr_seq, resource_grp_id, resource_id, op_code, jc_dept)
+    result = start_activity(emp_id, job_num, asm_seq, opr_seq, resource_grp_id, resource_id, op_code, jc_dept, capability_id)
     print(f"[START] Result: {result}")
     
     if result['success']:
@@ -416,12 +441,13 @@ def api_labor_end():
     labor_dtl_seq = data.get('laborDtlSeq')
     labor_qty = data.get('laborQty', 0)
     scrap_qty = data.get('scrapQty', 0)
+    scrap_reason = data.get('scrapReasonCode', '')
     complete = data.get('complete', False)
-    
+
     if not all([emp_id, labor_hed_seq, labor_dtl_seq is not None]):
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
-    
-    result = end_activity(emp_id, labor_hed_seq, labor_dtl_seq, labor_qty, scrap_qty, complete)
+
+    result = end_activity(emp_id, labor_hed_seq, labor_dtl_seq, labor_qty, scrap_qty, scrap_reason, complete)
     
     if result['success']:
         return jsonify(result)
@@ -440,7 +466,7 @@ def api_labor_active(emp_id):
     from app.logic.queries import get_active_labor_details
     
     active = get_active_labor(emp_id)
-    print(f"[ACTIVE] Got {len(active)} records: {active}", file=sys.stderr, flush=True)
+    print(f"[ACTIVE] Got {len(active)} records", file=sys.stderr, flush=True)
     
     if not active:
         return jsonify([])
@@ -473,7 +499,9 @@ def api_labor_active(emp_id):
             'QtyCompleted': details.get('QtyCompleted', 0),
             'QtyLeft': details.get('QtyLeft', 0),
             'QtyAvailable': details.get('QtyAvailable'),  # None for first op
-            'IsFirstOp': details.get('IsFirstOp', False)
+            'IsFirstOp': details.get('IsFirstOp', False),
+            'MtlStatus': details.get('MtlStatus', 'none'),
+            'MaxMtlQty': details.get('MaxMtlQty')  # None if no material constraint
         })
     
     return jsonify(enriched)
@@ -559,42 +587,52 @@ print("========== KANBAN ROUTES LOADED ==========")
 def api_kanban_submit():
     """
     Submit a Kanban Receipt - creates job, reports qty, closes job, receives to stock.
-    
+
     POST body: {
         "empId": "123",
         "partNum": "BILLET-2.5",
-        "quantity": 10
+        "quantity": 10,
+        "scrap": 0,  (optional)
+        "scrapReason": "DEFECT"  (required if scrap > 0)
     }
     """
     print("[api_kanban_submit] Route called", flush=True)
     print(f"[api_kanban_submit] Method: {request.method}", flush=True)
-    
+
     # Allow GET for testing
     if request.method == 'GET':
         return jsonify({'status': 'ok', 'message': 'Kanban endpoint is working. Use POST to submit.'})
-    
+
     try:
         from app.logic.epicor_api import kanban_receipt
         print("[api_kanban_submit] Import successful", flush=True)
-        
+
         data = request.get_json()
         print(f"[api_kanban_submit] Data: {data}", flush=True)
-        
+
         if not data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
-        
+
         emp_id = data.get('empId')
         part_num = data.get('partNum')
         quantity = data.get('quantity')
-        
+        scrap = data.get('scrap', 0)  # Optional, defaults to 0
+        scrap_reason = data.get('scrapReason', '')  # Required if scrap > 0
+
         if not all([emp_id, part_num, quantity]):
             return jsonify({'success': False, 'error': 'Missing required fields (empId, partNum, quantity)'}), 400
-        
+
         if quantity < 1:
             return jsonify({'success': False, 'error': 'Quantity must be at least 1'}), 400
-        
-        print(f"[api_kanban_submit] Calling kanban_receipt({emp_id}, {part_num}, {quantity})", flush=True)
-        result = kanban_receipt(emp_id, part_num, quantity)
+
+        if scrap < 0:
+            return jsonify({'success': False, 'error': 'Scrap cannot be negative'}), 400
+
+        if scrap > 0 and not scrap_reason:
+            return jsonify({'success': False, 'error': 'Scrap reason is required when scrap > 0'}), 400
+
+        print(f"[api_kanban_submit] Calling kanban_receipt({emp_id}, {part_num}, {quantity}, scrap={scrap}, scrap_reason={scrap_reason})", flush=True)
+        result = kanban_receipt(emp_id, part_num, quantity, scrap=scrap, scrap_reason=scrap_reason)
         print(f"[api_kanban_submit] Result: {result}", flush=True)
         
         if result.get('success'):
@@ -633,3 +671,22 @@ def api_billet_summary():
     """API endpoint for billet summary - for async refresh."""
     billets = get_billet_summary()
     return jsonify(billets)
+
+
+@views.route('/api/home_stats')
+def api_home_stats():
+    """
+    Get stats for home page: workcell counts, total jobs, active workers.
+    Returns all in one call for efficiency.
+    """
+    from app.logic.queries import get_all_workcell_counts, get_active_worker_count, get_total_queue_count
+    
+    counts = get_all_workcell_counts()
+    active_workers = get_active_worker_count()
+    total_jobs = get_total_queue_count()
+    
+    return jsonify({
+        'workcell_counts': counts,
+        'active_workers': active_workers,
+        'total_jobs': total_jobs
+    })

@@ -1,23 +1,41 @@
 # app/config.py
-# Version 1.1 — 2026-01-04
+# Version 1.3 — 2026-01-20
 #
 # Database configuration for The Queue
-# Uses Windows Authentication to connect to Epicor SQL Server
+# Supports both Windows Auth and SQL Server Auth via DB_AUTH setting
 
 import os
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 
 # Read from environment
 DB_SERVER = os.getenv('DB_SERVER', 'SQL1.CORP.JD2.COM')
-DB_NAME = os.getenv('DB_NAME', 'EPIC102700TEST')
-ODBC_DRIVER = os.getenv('ODBC_DRIVER', 'ODBC Driver 18 for SQL Server')
+DB_NAME = os.getenv('DB_NAME', 'ERP10LIVE')
+ODBC_DRIVER = os.getenv('ODBC_DRIVER', 'ODBC Driver 17 for SQL Server')
+
+# Database authentication mode: 'windows' or 'sql'
+# If not specified, defaults to 'windows'
+DB_AUTH = os.getenv('DB_AUTH', 'windows').lower()
+
+# Database credentials (only used if DB_AUTH=sql)
+DB_USERNAME = os.getenv('DB_USERNAME', '')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 
 # Build connection string dynamically
-CONN_STR = (
-    f"mssql+pyodbc://@{DB_SERVER}/{DB_NAME}"
-    f"?driver={ODBC_DRIVER.replace(' ', '+')}"
-    "&trusted_connection=yes&TrustServerCertificate=yes"
-)
+if DB_AUTH == 'sql' and DB_USERNAME and DB_PASSWORD:
+    # SQL Server Authentication - URL encode password to handle special characters
+    CONN_STR = (
+        f"mssql+pyodbc://{quote_plus(DB_USERNAME)}:{quote_plus(DB_PASSWORD)}@{DB_SERVER}/{DB_NAME}"
+        f"?driver={ODBC_DRIVER.replace(' ', '+')}"
+        "&TrustServerCertificate=yes"
+    )
+else:
+    # Windows Authentication (default)
+    CONN_STR = (
+        f"mssql+pyodbc://@{DB_SERVER}/{DB_NAME}"
+        f"?driver={ODBC_DRIVER.replace(' ', '+')}"
+        "&trusted_connection=yes&TrustServerCertificate=yes"
+    )
 
 # PDF path translation (Epicor stores UNC paths, we need local paths)
 PDF_UNC_PREFIX = os.getenv('PDF_UNC_PREFIX', r'\\JAIMEE-EF\EPICOR\Part Attachments')

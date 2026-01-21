@@ -277,7 +277,8 @@
     font-size: 0.95rem;
 }
 
-#kanban-qty {
+#kanban-qty,
+#kanban-scrap {
     padding: 10px 12px;
     font-size: 1.1rem;
     background: #2a2a2a;
@@ -288,7 +289,8 @@
     text-align: center;
 }
 
-#kanban-qty:focus {
+#kanban-qty:focus,
+#kanban-scrap:focus {
     outline: none;
     border-color: #666;
 }
@@ -460,6 +462,10 @@
                 <label>Quantity:</label>
                 <input type="number" id="kanban-qty" min="1" value="1" autocomplete="off">
             </div>
+            <div class="burn-form-row">
+                <label>Scrap:</label>
+                <input type="number" id="kanban-scrap" min="0" value="0" autocomplete="off">
+            </div>
             <div class="burn-form-row" id="kanban-last-row" style="display: none;">
                 <label>Last:</label>
                 <span id="kanban-last" style="color: #f0a0a0; font-size: 0.85rem;"></span>
@@ -565,14 +571,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const cancelBtn = document.getElementById('kanban-cancel');
     const submitBtn = document.getElementById('kanban-submit');
     const qtyInput = document.getElementById('kanban-qty');
+    const scrapInput = document.getElementById('kanban-scrap');
     const message = document.getElementById('kanban-message');
     let currentPart = null;
-    
+
     async function openModal(partnum, desc) {
         currentPart = partnum;
         document.getElementById('kanban-partnum').textContent = partnum;
         document.getElementById('kanban-description').textContent = desc || '-';
         qtyInput.value = 1;
+        scrapInput.value = 0;
         message.className = 'burn-message';
         submitBtn.disabled = false;
         
@@ -613,7 +621,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
-    window.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    // Removed: click-outside-to-close - modal persists until manually closed
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
     qtyInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitBtn.click(); } });
     
@@ -621,23 +629,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const emp = getStoredEmployee();
         if (!emp) { message.textContent = 'Not logged in.'; message.className = 'burn-message error'; return; }
         const qty = parseInt(qtyInput.value, 10);
+        const scrap = parseInt(scrapInput.value, 10) || 0;
         if (!qty || qty < 1) { message.textContent = 'Enter a valid quantity.'; message.className = 'burn-message error'; return; }
-        
+        if (scrap < 0) { message.textContent = 'Scrap cannot be negative.'; message.className = 'burn-message error'; return; }
+
         submitBtn.disabled = true;
         message.textContent = 'Processing...';
         message.className = 'burn-message processing';
-        
+
         try {
             const resp = await fetch('/api/kanban/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ empId: emp.id, partNum: currentPart, quantity: qty })
+                body: JSON.stringify({ empId: emp.id, partNum: currentPart, quantity: qty, scrap: scrap, scrapReason: scrap > 0 ? 'SCRAP' : '' })
             });
             const result = await resp.json();
             if (result.success) {
                 message.textContent = result.message || 'Success';
                 message.className = 'burn-message success';
-                setTimeout(() => { closeModal(); location.reload(); }, 1000);
+                // Modal stays open after success - user can close manually or submit again
+                submitBtn.disabled = false;
             } else {
                 message.textContent = result.error || 'Failed';
                 message.className = 'burn-message error';
