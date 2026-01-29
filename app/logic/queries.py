@@ -1642,5 +1642,109 @@ def get_operation_last_entries(job_num):
     for row in rows:
         key = f"{row['AssemblySeq']}-{row['OprSeq']}"
         result[key] = row['LastEntryDate']  # May be None if no labor entry yet
-    
+
+    return result
+
+
+# ============================================================================
+# PRODUCTION ACTIVITY REPORT
+# ============================================================================
+
+def get_all_employees():
+    """Get all active employees for dropdown."""
+    query = """
+        SELECT EmpID, Name
+        FROM Erp.EmpBasic
+        WHERE EmpStatus = 'A'
+        ORDER BY EmpID
+    """
+    return sql_query(query)
+
+
+def get_activity_report(emp_id, start_date, end_date, op_codes=None):
+    """
+    Get production activity report for an employee or all employees.
+
+    Returns all labor entries (including indirect) with job/part details.
+
+    Args:
+        emp_id: Employee ID (string) or 'all' for all employees
+        start_date: Start date (string 'YYYY-MM-DD')
+        end_date: End date (string 'YYYY-MM-DD')
+        op_codes: Optional list of operation codes to filter
+
+    Returns:
+        List of dicts with labor entry details
+    """
+    params = {
+        'start_date': start_date,
+        'end_date': end_date
+    }
+
+    # Build employee filter clause
+    emp_filter = ""
+    if emp_id and emp_id != 'all':
+        emp_filter = "AND ld.EmployeeNum = :emp_id"
+        params['emp_id'] = emp_id
+
+    # Build operation filter clause
+    op_filter = ""
+    if op_codes and len(op_codes) > 0:
+        placeholders = ', '.join([f':op{i}' for i in range(len(op_codes))])
+        params.update({f'op{i}': op for i, op in enumerate(op_codes)})
+        op_filter = f"AND jo.OpCode IN ({placeholders})"
+
+    query = f"""
+        SELECT TOP 1000
+            CONVERT(VARCHAR(10), ld.ClockInDate, 23) AS ClockInDate,
+            CASE
+                WHEN ld.ClockInTime IS NOT NULL
+                THEN FORMAT(DATEADD(MINUTE, ld.ClockInTime * 60, CONVERT(DATETIME, '00:00:00')), 'HH:mm')
+                ELSE ''
+            END AS ClockInTime,
+            ld.EmployeeNum,
+            e.Name AS EmployeeName,
+            ld.JobNum,
+            ld.AssemblySeq,
+            ld.OprSeq,
+            jo.OpCode,
+            ISNULL(jo.OpDesc, '') AS OpDesc,
+            CASE WHEN ld.AssemblySeq > 0 THEN ja.PartNum ELSE jh.PartNum END AS PartNum,
+            CASE WHEN ld.AssemblySeq > 0 THEN pa.PartDescription ELSE p.PartDescription END AS PartDescription,
+            ISNULL(ld.LaborQty, 0) AS LaborQty,
+            ISNULL(ld.ScrapQty, 0) AS ScrapQty,
+            ISNULL(ld.LaborHrs, 0) AS LaborHrs
+        FROM Erp.LaborDtl ld
+        INNER JOIN Erp.EmpBasic e
+            ON ld.Company = e.Company AND ld.EmployeeNum = e.EmpID
+        INNER JOIN Erp.JobHead jh
+            ON ld.Company = jh.Company AND ld.JobNum = jh.JobNum
+        INNER JOIN Erp.JobOper jo
+            ON ld.Company = jo.Company
+            AND ld.JobNum = jo.JobNum
+            AND ld.AssemblySeq = jo.AssemblySeq
+            AND ld.OprSeq = jo.OprSeq
+        LEFT JOIN Erp.JobAsmbl ja
+            ON ld.Company = ja.Company
+            AND ld.JobNum = ja.JobNum
+            AND ld.AssemblySeq = ja.AssemblySeq
+        LEFT JOIN Erp.Part p
+            ON jh.Company = p.Company AND jh.PartNum = p.PartNum
+        LEFT JOIN Erp.Part pa
+            ON ja.Company = pa.Company AND ja.PartNum = pa.PartNum
+        WHERE ld.ClockInDate >= :start_date
+          AND ld.ClockInDate <= :end_date
+          {emp_filter}
+          {op_filter}
+        ORDER BY ld.ClockInDate DESC, ld.ClockInTime DESC
+    """
+
+    import sys
+    print(f"[get_activity_report] Query params: {params}", file=sys.stderr, flush=True)
+    print(f"[get_activity_report] Employee filter: {emp_filter}", file=sys.stderr, flush=True)
+    print(f"[get_activity_report] Op filter: {op_filter}", file=sys.stderr, flush=True)
+
+    result = sql_query(query, params)
+    print(f"[get_activity_report] Returned {len(result)} rows", file=sys.stderr, flush=True)
+
     return result

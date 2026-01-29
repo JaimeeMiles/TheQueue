@@ -9,10 +9,10 @@ print("========== VIEWS.PY LOADED ==========")
 import os
 from flask import Blueprint, render_template, jsonify, request, send_file, abort
 from app.logic.queries import (
-    get_workcells, get_jobs_for_workcell, get_jobs_with_details, get_job_materials, 
+    get_workcells, get_jobs_for_workcell, get_jobs_with_details, get_job_materials,
     get_job_operations, get_job_header, get_workcell_config,
     get_last_checkin, get_materials_for_workcell, get_billet_summary, WORKCELLS,
-    get_operation_last_entries
+    get_operation_last_entries, get_activity_report, get_all_employees
 )
 from app.config import translate_pdf_path
 
@@ -690,3 +690,74 @@ def api_home_stats():
         'active_workers': active_workers,
         'total_jobs': total_jobs
     })
+
+
+# ============================================================================
+# PRODUCTION ACTIVITY REPORT
+# ============================================================================
+
+@views.route('/reports/activity')
+def activity_report():
+    """Production activity report page."""
+    import sys
+
+    employees = get_all_employees()
+    workcells = get_workcells()
+
+    # Get full workcell configs with ops for operation filter
+    workcell_configs = []
+    for wc in workcells:
+        config = WORKCELLS.get(wc['id'], {})
+        workcell_configs.append({
+            'id': wc['id'],
+            'name': wc['name'],
+            'ops': config.get('ops', [])
+        })
+
+    print(f"[activity_report] Loaded {len(employees)} employees, {len(workcell_configs)} workcells", file=sys.stderr, flush=True)
+
+    return render_template(
+        'activity_report.html',
+        employees=employees,
+        workcells=workcell_configs
+    )
+
+
+@views.route('/api/reports/activity')
+def api_activity_report():
+    """
+    API endpoint for activity report data.
+
+    Query params:
+        emp_id: Employee ID or 'all' for all employees (required)
+        start_date: YYYY-MM-DD (required)
+        end_date: YYYY-MM-DD (required)
+        op_codes: Comma-separated operation codes (optional)
+    """
+    import sys
+
+    emp_id = request.args.get('emp_id', 'all')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    op_codes_str = request.args.get('op_codes', '')
+
+    # Validate required parameters
+    if not all([start_date, end_date]):
+        return jsonify({'error': 'Missing required parameters: start_date, end_date'}), 400
+
+    # Parse operation codes
+    op_codes = None
+    if op_codes_str and op_codes_str != 'all':
+        op_codes = [code.strip() for code in op_codes_str.split(',') if code.strip()]
+
+    print(f"[api_activity_report] emp={emp_id}, dates={start_date} to {end_date}, ops={op_codes}", file=sys.stderr, flush=True)
+
+    try:
+        data = get_activity_report(emp_id, start_date, end_date, op_codes)
+        print(f"[api_activity_report] Returned {len(data)} records", file=sys.stderr, flush=True)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        print(f"[ERROR] Activity report failed: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500

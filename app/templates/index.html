@@ -70,7 +70,29 @@
     .kanban-home-btn:hover {
         background: #1d4ed8;
     }
-    
+
+    .reports-home-btn {
+        background: #16a34a;
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-right: 1rem;
+    }
+
+    .reports-home-btn:hover {
+        background: #15803d;
+    }
+
+    .home-buttons {
+        display: flex;
+        gap: 1rem;
+    }
+
     /* Kanban Modal */
     .kanban-modal {
         display: none;
@@ -374,7 +396,10 @@
 <div class="home-container">
     <div class="home-header">
         <h1>Select Work Cell</h1>
-        <button id="kanban-btn" class="kanban-home-btn">Kanban Receipt</button>
+        <div class="home-buttons">
+            <button id="reports-btn" class="reports-home-btn" onclick="location.href='{{ url_for('views.activity_report') }}'">📊 Activity Report</button>
+            <button id="kanban-btn" class="kanban-home-btn">Kanban Receipt</button>
+        </div>
     </div>
     
 

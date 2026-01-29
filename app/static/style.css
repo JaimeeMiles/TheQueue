@@ -8,6 +8,10 @@
     padding: 0;
 }
 
+.hidden {
+    display: none !important;
+}
+
 :root {
     /* Industrial dark palette */
     --bg-primary: #121212;
@@ -2341,4 +2345,325 @@ body {
     width: 1rem;
     height: 1rem;
     cursor: pointer;
+}
+
+/* ============================================================================
+   PRODUCTION ACTIVITY REPORT
+   ============================================================================ */
+
+/* Screen-only: hide print header */
+.print-header {
+    display: none;
+}
+
+/* Activity Report Styles (screen) */
+.report-header {
+    background: var(--bg-secondary);
+    padding: 1.5rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+}
+
+.report-header h2 {
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.filter-section {
+    background: var(--bg-secondary);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.filter-row label {
+    min-width: 80px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.filter-input,
+.filter-row select,
+.filter-row input[type="date"] {
+    padding: 0.5rem;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.filter-row select[multiple] {
+    min-width: 200px;
+}
+
+.preset-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.preset-buttons button {
+    padding: 0.5rem 1rem;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.preset-buttons button:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+
+.submit-btn {
+    padding: 0.75rem 2rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.submit-btn:hover {
+    background: var(--accent-hover);
+}
+
+.submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+}
+
+.error-message {
+    background: var(--status-late-bg);
+    color: var(--status-late);
+    padding: 1rem 2rem;
+    border-left: 4px solid var(--status-late);
+}
+
+.results-section {
+    padding: 1rem;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.results-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.results-summary span {
+    margin-right: 2rem;
+}
+
+.print-btn {
+    padding: 0.5rem 1.5rem;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.print-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-secondary);
+}
+
+.report-table th {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+
+.report-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.report-table th.sortable:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.report-table td {
+    padding: 0.5rem 0.75rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+
+.report-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.report-table tfoot td {
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    border-top: 2px solid var(--border);
+    background: var(--bg-elevated);
+}
+
+.no-data {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+/* ============================================================================
+   PRINT STYLES - ACTIVITY REPORT
+   ============================================================================ */
+
+@media print {
+    /* Page orientation */
+    @page {
+        size: landscape;
+        margin: 0.5in;
+    }
+
+    /* Hide interactive elements */
+    .header,
+    .filter-section,
+    .print-btn,
+    .back-btn,
+    .results-summary,
+    .switch-link,
+    .loading,
+    .error-message,
+    .report-header {
+        display: none !important;
+    }
+
+    /* Show print header */
+    .print-header {
+        display: block !important;
+        text-align: center;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #000;
+        padding-bottom: 10px;
+    }
+
+    .print-header h1 {
+        font-size: 18pt;
+        margin: 0;
+        color: #000;
+    }
+
+    .print-header h2 {
+        font-size: 14pt;
+        margin: 5px 0;
+        color: #000;
+    }
+
+    .print-header div {
+        font-size: 10pt;
+        margin: 2px 0;
+        color: #333;
+    }
+
+    /* Page setup */
+    body {
+        background: white;
+        color: black;
+        font-size: 10pt;
+        padding: 0;
+        margin: 0;
+    }
+
+    .results-section {
+        padding: 0 !important;
+    }
+
+    /* Table styling */
+    .report-table {
+        border-collapse: collapse;
+        width: 100%;
+        page-break-inside: auto;
+        font-size: 9pt;
+    }
+
+    .report-table thead {
+        display: table-header-group; /* Repeat header on each page */
+    }
+
+    .report-table tfoot {
+        display: table-footer-group; /* Footer only on last page */
+    }
+
+    .report-table tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    .report-table th {
+        background: #e0e0e0 !important;
+        color: black !important;
+        border: 1px solid #000;
+        padding: 4px 6px;
+        font-weight: bold;
+        text-align: left;
+    }
+
+    .report-table td {
+        border: 1px solid #999;
+        padding: 4px 6px;
+        color: #000;
+        background: white !important;
+    }
+
+    .report-table tfoot td {
+        border-top: 2px solid #000;
+        font-weight: bold;
+        background: #f0f0f0 !important;
+    }
+
+    /* Remove hover effects */
+    .report-table tbody tr:hover {
+        background: white !important;
+    }
+
+    /* Page margins */
+    @page {
+        margin: 0.5in 0.75in;
+        size: letter landscape;
+    }
 }

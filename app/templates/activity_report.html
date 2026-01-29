@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}Production Activity Report{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="report-header">
+    <h2>Production Activity Report</h2>
+    <a href="{{ url_for('views.index') }}" class="back-btn">← Back to Home</a>
+</div>
+
+<!-- Filter Section -->
+<div class="filter-section">
+    <div class="filter-row">
+        <label for="employee-select">Employee:</label>
+        <select id="employee-select" class="filter-input">
+            <option value="all">All Employees</option>
+            {% for emp in employees %}
+            <option value="{{ emp.EmpID }}">{{ emp.EmpID }} - {{ emp.Name }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="workcell-select" style="margin-left: 2rem;">Workcell:</label>
+        <select id="workcell-select" class="filter-input">
+            <option value="all">All Workcells</option>
+            {% for wc in workcells %}
+            <option value="{{ wc.id }}">{{ wc.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="filter-row">
+        <label for="start-date">Start Date:</label>
+        <input type="date" id="start-date" class="filter-input" required>
+
+        <label for="end-date" style="margin-left: 1rem;">End Date:</label>
+        <input type="date" id="end-date" class="filter-input" required>
+
+        <div class="preset-buttons" style="margin-left: 1rem;">
+            <button type="button" onclick="setToday()">Today</button>
+            <button type="button" onclick="setYesterday()">Yesterday</button>
+            <button type="button" onclick="setThisWeek()">This Week</button>
+            <button type="button" onclick="setLastWeek()">Last Week</button>
+        </div>
+    </div>
+
+    <div class="filter-row">
+        <button id="submit-btn" class="submit-btn">Run Report</button>
+    </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loading" class="loading hidden">
+    Loading data...
+</div>
+
+<!-- Error Display -->
+<div id="error-message" class="error-message hidden"></div>
+
+<!-- Results Section (initially hidden) -->
+<div id="results-section" class="results-section hidden">
+    <!-- Print-only Header -->
+    <div class="print-header">
+        <h1>JD Squared Inc</h1>
+        <h2>Production Activity Report</h2>
+        <div id="print-params"></div>
+        <div id="print-timestamp"></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="results-summary">
+        <span id="result-count">0 records</span>
+        <span id="result-employee"></span>
+        <span id="result-daterange"></span>
+        <button onclick="window.print()" class="print-btn">🖨 Print Report</button>
+    </div>
+
+    <!-- Data Table -->
+    <table class="report-table" id="report-table">
+        <thead>
+            <tr>
+                <th data-sort="date" class="sortable">Date/Time</th>
+                <th data-sort="employee" class="sortable employee-col">Employee</th>
+                <th data-sort="job" class="sortable">Job</th>
+                <th data-sort="part" class="sortable">Part</th>
+                <th data-sort="desc" class="sortable">Description</th>
+                <th data-sort="op" class="sortable">Operation</th>
+                <th data-sort="qty" class="sortable">Qty</th>
+                <th data-sort="scrap" class="sortable">Scrap</th>
+                <th data-sort="hours" class="sortable">Hours</th>
+            </tr>
+        </thead>
+        <tbody id="report-tbody">
+            <!-- Populated via JavaScript -->
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="6" id="total-label"><strong>TOTAL</strong></td>
+                <td id="total-qty"><strong>0</strong></td>
+                <td id="total-scrap"><strong>0</strong></td>
+                <td id="total-hours"><strong>0.00</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- No Data Message -->
+    <div id="no-data" class="no-data hidden">
+        No activity found for the selected criteria.
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+console.log('Activity Report script starting...');
+
+// Wait for page to fully load
+document.addEventListener('DOMContentLoaded', function() {
+    // Pre-populate employee with logged-in user
+    if (typeof getCurrentEmployee === 'function') {
+        const currentEmployee = getCurrentEmployee();
+        if (currentEmployee) {
+            document.getElementById('employee-select').value = currentEmployee.id;
+        } else {
+            // Default to "All Employees" if not logged in
+            document.getElementById('employee-select').value = 'all';
+        }
+    } else {
+        document.getElementById('employee-select').value = 'all';
+    }
+
+    // Set default date to today
+    setToday();
+
+    // Attach submit button handler
+    document.getElementById('submit-btn').addEventListener('click', runReport);
+});
+
+// Date preset functions
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function setToday() {
+    const today = new Date();
+    document.getElementById('start-date').value = formatDate(today);
+    document.getElementById('end-date').value = formatDate(today);
+}
+
+function setYesterday() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    document.getElementById('start-date').value = formatDate(yesterday);
+    document.getElementById('end-date').value = formatDate(yesterday);
+}
+
+function setThisWeek() {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+
+    document.getElementById('start-date').value = formatDate(monday);
+    document.getElementById('end-date').value = formatDate(today);
+}
+
+function setLastWeek() {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const lastMonday = new Date(today);
+    lastMonday.setDate(today.getDate() - dayOfWeek - 6 + (dayOfWeek === 0 ? -6 : 1));
+    const lastSunday = new Date(lastMonday);
+    lastSunday.setDate(lastMonday.getDate() + 6);
+
+    document.getElementById('start-date').value = formatDate(lastMonday);
+    document.getElementById('end-date').value = formatDate(lastSunday);
+}
+
+// Workcell configurations
+const workcellConfigs = {{ workcells|tojson }};
+
+async function runReport() {
+    console.log('runReport called!');
+    const empId = document.getElementById('employee-select').value;
+    const workcellId = document.getElementById('workcell-select').value;
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    console.log('Params:', { empId, workcellId, startDate, endDate });
+
+    // Validate inputs
+    if (!startDate || !endDate) {
+        showError('Please select date range');
+        return;
+    }
+
+    // Build operation codes from workcell
+    let opCodesParam = 'all';
+    if (workcellId !== 'all') {
+        const wc = workcellConfigs.find(w => w.id === workcellId);
+        if (wc && wc.ops && wc.ops.length > 0) {
+            opCodesParam = wc.ops.join(',');
+        }
+    }
+
+    // Show loading, hide error and results
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('error-message').classList.add('hidden');
+    document.getElementById('results-section').classList.add('hidden');
+    document.getElementById('submit-btn').disabled = true;
+
+    try {
+        const url = `/api/reports/activity?emp_id=${encodeURIComponent(empId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&op_codes=${encodeURIComponent(opCodesParam)}`;
+
+        console.log('Fetching report:', url);
+        const response = await fetch(url);
+        const result = await response.json();
+
+        console.log('Report result:', result);
+
+        if (result.success) {
+            displayResults(result.data, empId, startDate, endDate);
+        } else {
+            showError(result.error || 'Failed to fetch report data');
+        }
+    } catch (err) {
+        console.error('Report error:', err);
+        showError('Error: ' + err.message);
+    } finally {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('submit-btn').disabled = false;
+    }
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('hidden');
+}
+
+function formatTime12Hour(time24) {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+}
+
+function displayResults(data, empId, startDate, endDate) {
+    const tbody = document.getElementById('report-tbody');
+    const resultsSection = document.getElementById('results-section');
+    const noDataDiv = document.getElementById('no-data');
+
+    // Clear previous results
+    tbody.innerHTML = '';
+
+    if (data.length === 0) {
+        // Reset totals to zero
+        document.getElementById('total-qty').innerHTML = '<strong>0</strong>';
+        document.getElementById('total-scrap').innerHTML = '<strong>0</strong>';
+        document.getElementById('total-hours').innerHTML = '<strong>0.00</strong>';
+
+        noDataDiv.classList.remove('hidden');
+        resultsSection.classList.remove('hidden');
+        return;
+    }
+
+    noDataDiv.classList.add('hidden');
+
+    // Show/hide employee column based on filter
+    const showEmployeeCol = empId === 'all';
+    const employeeCols = document.querySelectorAll('.employee-col');
+    employeeCols.forEach(col => {
+        col.style.display = showEmployeeCol ? '' : 'none';
+    });
+
+    // Update total label colspan
+    document.getElementById('total-label').setAttribute('colspan', showEmployeeCol ? '6' : '5');
+
+    // Populate table
+    let totalQty = 0;
+    let totalScrap = 0;
+    let totalHours = 0;
+
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+
+        const qty = parseFloat(row.LaborQty) || 0;
+        const scrap = parseFloat(row.ScrapQty) || 0;
+        const hours = parseFloat(row.LaborHrs) || 0;
+
+        totalQty += qty;
+        totalScrap += scrap;
+        totalHours += hours;
+
+        const timeFormatted = formatTime12Hour(row.ClockInTime);
+        const employeeCell = showEmployeeCol ? `<td class="employee-col">${row.EmployeeNum} - ${row.EmployeeName || ''}</td>` : '';
+
+        tr.innerHTML = `
+            <td>${row.ClockInDate} ${timeFormatted}</td>
+            ${employeeCell}
+            <td>${row.JobNum || ''}</td>
+            <td>${row.PartNum || ''}</td>
+            <td>${row.PartDescription || ''}</td>
+            <td>${row.OprSeq}-${row.OpCode || ''}</td>
+            <td style="text-align: right;">${qty.toFixed(1)}</td>
+            <td style="text-align: right;">${scrap > 0 ? scrap.toFixed(1) : '-'}</td>
+            <td style="text-align: right;">${hours.toFixed(2)}</td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+
+    // Update totals
+    document.getElementById('total-qty').innerHTML = `<strong>${totalQty.toFixed(1)}</strong>`;
+    document.getElementById('total-scrap').innerHTML = `<strong>${totalScrap.toFixed(1)}</strong>`;
+    document.getElementById('total-hours').innerHTML = `<strong>${totalHours.toFixed(2)}</strong>`;
+
+    // Update summary
+    const empSelect = document.getElementById('employee-select');
+    const empName = empSelect.options[empSelect.selectedIndex].text;
+    document.getElementById('result-count').textContent = `${data.length} record${data.length !== 1 ? 's' : ''}`;
+    document.getElementById('result-employee').textContent = `Employee: ${empName}`;
+    document.getElementById('result-daterange').textContent = `${startDate} to ${endDate}`;
+
+    // Update print header
+    document.getElementById('print-params').innerHTML = `
+        <strong>Employee:</strong> ${empName}<br>
+        <strong>Date Range:</strong> ${startDate} to ${endDate}
+    `;
+    document.getElementById('print-timestamp').textContent = `Generated: ${new Date().toLocaleString()}`;
+
+    // Show results
+    resultsSection.classList.remove('hidden');
+}
+
+// Table sorting
+let currentSort = { column: null, ascending: true };
+
+document.querySelectorAll('.sortable').forEach(th => {
+    th.addEventListener('click', function() {
+        const sortKey = this.dataset.sort;
+        sortTable(sortKey);
+    });
+});
+
+function sortTable(column) {
+    const tbody = document.getElementById('report-tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Check if employee column is visible
+    const employeeColVisible = document.querySelector('.employee-col').style.display !== 'none';
+    const offset = employeeColVisible ? 1 : 0;
+
+    // Determine sort direction
+    if (currentSort.column === column) {
+        currentSort.ascending = !currentSort.ascending;
+    } else {
+        currentSort.column = column;
+        currentSort.ascending = true;
+    }
+
+    // Sort rows
+    rows.sort((a, b) => {
+        let aVal, bVal;
+
+        switch(column) {
+            case 'date':
+                aVal = a.cells[0].textContent;
+                bVal = b.cells[0].textContent;
+                break;
+            case 'employee':
+                aVal = a.cells[1].textContent;
+                bVal = b.cells[1].textContent;
+                break;
+            case 'job':
+                aVal = a.cells[1 + offset].textContent;
+                bVal = b.cells[1 + offset].textContent;
+                break;
+            case 'part':
+                aVal = a.cells[2 + offset].textContent;
+                bVal = b.cells[2 + offset].textContent;
+                break;
+            case 'desc':
+                aVal = a.cells[3 + offset].textContent;
+                bVal = b.cells[3 + offset].textContent;
+                break;
+            case 'op':
+                aVal = a.cells[4 + offset].textContent;
+                bVal = b.cells[4 + offset].textContent;
+                break;
+            case 'qty':
+                aVal = parseFloat(a.cells[5 + offset].textContent) || 0;
+                bVal = parseFloat(b.cells[5 + offset].textContent) || 0;
+                break;
+            case 'scrap':
+                aVal = parseFloat(a.cells[6 + offset].textContent) || 0;
+                bVal = parseFloat(b.cells[6 + offset].textContent) || 0;
+                break;
+            case 'hours':
+                aVal = parseFloat(a.cells[7 + offset].textContent) || 0;
+                bVal = parseFloat(b.cells[7 + offset].textContent) || 0;
+                break;
+        }
+
+        if (aVal < bVal) return currentSort.ascending ? -1 : 1;
+        if (aVal > bVal) return currentSort.ascending ? 1 : -1;
+        return 0;
+    });
+
+    // Re-append sorted rows
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Update header indicators
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.textContent = th.textContent.replace(' ↑', '').replace(' ↓', '');
+    });
+    const sortedTh = document.querySelector(`[data-sort="${column}"]`);
+    sortedTh.textContent += currentSort.ascending ? ' ↑' : ' ↓';
+}
+
+console.log('Activity Report script loaded');
+</script>
+{% endblock %}
