@@ -1078,6 +1078,46 @@ def get_billet_summary():
     return sql_query(query)
 
 
+def get_casting_summary(op_code):
+    """
+    Get casting demand summary - kanban parts with 'casting' in description.
+
+    Shows parts containing 'casting' in description:
+    - OnHand: Current inventory
+    - Demand: From PartQty.DemandQty (kanban demand)
+    - Shortage: Demand - OnHand (if positive)
+
+    Args:
+        op_code: Operation code ('CAST' or 'CASTMIL2') - for display only,
+                 both modes show the same casting parts
+
+    Returns:
+        List of dicts with part demand info
+    """
+    query = """
+        SELECT
+            p.PartNum,
+            p.PartDescription,
+            ISNULL(pq.OnHandQty, 0) AS OnHand,
+            ISNULL(pq.DemandQty, 0) AS Demand,
+            CASE
+                WHEN ISNULL(pq.DemandQty, 0) > ISNULL(pq.OnHandQty, 0)
+                THEN ISNULL(pq.DemandQty, 0) - ISNULL(pq.OnHandQty, 0)
+                ELSE 0
+            END AS Shortage
+        FROM Erp.Part p
+        LEFT JOIN (
+            SELECT PartNum, SUM(OnHandQty) AS OnHandQty, SUM(DemandQty) AS DemandQty
+            FROM Erp.PartQty
+            GROUP BY PartNum
+        ) pq ON p.PartNum = pq.PartNum
+        WHERE p.PartDescription LIKE '%casting%'
+        ORDER BY p.PartDescription, p.PartNum
+    """
+
+    return sql_query(query, {})
+
+
 def search_parts(search_term):
     """
     Search for parts by part number or description.

@@ -78,7 +78,8 @@
       "show_viewpdf": true,
       "filter_by_resource": true,
       "filter_by_capability": true,
-      "confirm_end_qty": true
+      "confirm_end_qty": true,
+      "group_by_material": true
     },
     "POWDER": {
       "name": "Powder Coat",

@@ -673,6 +673,19 @@ def api_billet_summary():
     return jsonify(billets)
 
 
+@views.route('/api/casting_summary/<op_code>')
+def api_casting_summary(op_code):
+    """API endpoint for casting summary by operation code (CAST or CASTMIL2)."""
+    from app.logic.queries import get_casting_summary
+
+    # Validate operation code
+    if op_code not in ['CAST', 'CASTMIL2']:
+        return jsonify({'error': 'Invalid operation code'}), 400
+
+    castings = get_casting_summary(op_code)
+    return jsonify(castings)
+
+
 @views.route('/api/home_stats')
 def api_home_stats():
     """

@@ -32,6 +32,39 @@
     border: 1px solid #444 !important;
 }
 
+/* Operation toggle bar */
+.operation-toggle-bar {
+    display: flex;
+    gap: 12px;
+    padding: 12px 20px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #333;
+}
+
+.op-toggle-btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: var(--bg-elevated);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.op-toggle-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+.op-toggle-btn.active {
+    background: #7f1d1d;
+    border-color: #991b1b;
+    color: white;
+}
+
 /* Filter row */
 .inserts-filter-row {
     padding: 14px 20px;
@@ -389,9 +422,15 @@
 <div class="queue-header">
     <div class="queue-title-row">
         <a href="{{ url_for('views.index') }}" class="back-btn">← Back</a>
-        <h2>Inserts - Gen 3 Demand</h2>
+        <h2 id="page-title">Inserts - Gen 3 Demand</h2>
     </div>
     <button onclick="location.reload()" class="refresh-btn">🔄 Refresh</button>
+</div>
+
+<!-- Operation Toggle -->
+<div class="operation-toggle-bar">
+    <button class="op-toggle-btn active" data-mode="inserts">Inserts</button>
+    <button class="op-toggle-btn" data-mode="CAST">CAST</button>
 </div>
 
 {% if inserts %}
@@ -509,7 +548,138 @@
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('search-input');
     const hideNoShortage = document.getElementById('hide-no-shortage');
-    
+    let currentMode = 'inserts';  // inserts, CAST, or CASTMIL2
+    let currentData = [];
+
+    // ============================================
+    // MODE SWITCHING
+    // ============================================
+
+    document.querySelectorAll('.op-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const mode = this.dataset.mode;
+            if (mode === currentMode) return;
+
+            // Update button states
+            document.querySelectorAll('.op-toggle-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+
+            currentMode = mode;
+
+            // Update page title
+            const titles = {
+                'inserts': 'Inserts - Gen 3 Demand',
+                'CAST': 'CAST - Demand Summary'
+            };
+            document.getElementById('page-title').textContent = titles[mode];
+
+            // Fetch and render data
+            if (mode === 'inserts') {
+                // Reload page to get server-rendered inserts data
+                location.reload();
+            } else {
+                // Fetch casting data via API
+                await fetchCastingData(mode);
+            }
+        });
+    });
+
+    async function fetchCastingData(opCode) {
+        try {
+            const response = await fetch(`/api/casting_summary/${opCode}`);
+            const data = await response.json();
+            currentData = data;
+            renderCastingTable(data);
+        } catch (e) {
+            console.error('Failed to fetch casting data:', e);
+            alert('Failed to load casting data');
+        }
+    }
+
+    function renderCastingTable(data) {
+        const dashboard = document.getElementById('inserts-dashboard');
+
+        if (!data || data.length === 0) {
+            dashboard.innerHTML = '<div class="no-data">No casting demand found.</div>';
+            return;
+        }
+
+        // Build simpler table structure for castings (no In Production group)
+        let html = `
+            <table class="inserts-table" id="inserts-table">
+                <thead>
+                    <tr>
+                        <th class="col-part">Part</th>
+                        <th class="col-desc">Description</th>
+                        <th class="col-num">On Hand</th>
+                        <th class="col-num">Demand</th>
+                        <th class="col-num col-short">Shortage</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        let totalOnHand = 0;
+        let totalDemand = 0;
+        let totalShortage = 0;
+
+        data.forEach(row => {
+            const onHand = row.OnHand || 0;
+            const demand = row.Demand || 0;
+            const shortage = row.Shortage || 0;
+
+            totalOnHand += onHand;
+            totalDemand += demand;
+            totalShortage += shortage;
+
+            const hasShortage = shortage > 0 ? ' has-shortage' : '';
+
+            html += `
+                <tr class="insert-row${hasShortage}"
+                    data-partnum="${row.PartNum}"
+                    data-description="${row.PartDescription || ''}"
+                    data-shortage="${shortage}">
+                    <td class="col-part">${row.PartNum}</td>
+                    <td class="col-desc">${row.PartDescription || '-'}</td>
+                    <td class="col-num">${onHand}</td>
+                    <td class="col-num">${demand}</td>
+                    <td class="col-num col-short">${shortage > 0 ? shortage : '-'}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="col-part"><strong>TOTAL</strong></td>
+                        <td class="col-desc"></td>
+                        <td class="col-num"><strong>${totalOnHand}</strong></td>
+                        <td class="col-num"><strong>${totalDemand}</strong></td>
+                        <td class="col-num col-short"><strong>${totalShortage > 0 ? totalShortage : '-'}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        `;
+
+        dashboard.innerHTML = html;
+
+        // Update visible count
+        document.getElementById('visible-count').textContent = data.length;
+
+        // Re-attach click handlers for Kanban modal
+        attachRowClickHandlers();
+    }
+
+    function attachRowClickHandlers() {
+        document.querySelectorAll('.insert-row').forEach(row => {
+            row.addEventListener('click', () => {
+                if (!getStoredEmployee()) { alert('Please log in first.'); return; }
+                openModal(row.dataset.partnum, row.dataset.description);
+            });
+        });
+    }
+
     function updateTotals() {
         let onhand = 0, need = 0, shortTotal = 0, setsTotal = 0;
         let inprod = 0, shortProd = 0, setsProd = 0;
